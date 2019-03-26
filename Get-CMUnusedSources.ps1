@@ -207,7 +207,7 @@ Function Get-Applications {
         ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
             $obj = New-Object PSObject
             Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Application"
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $Application.ModelName
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)/$($DeploymentType.Version)"
             Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($Application.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
             Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $DeploymentType.Installer.Contents.Content.Location
             If (([bool]([System.Uri]$DeploymentType.Installer.Contents.Content.Location).IsUnc) -eq $true) {
@@ -322,24 +322,5 @@ Set-Location "$($SiteCode):" | Out-Null
 Write-Verbose "Getting all child folders under $SourcesLocation"
 $AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
 
-Write-Verbose "Getting all SMB shares on $env:computername"
-$AllShares = Get-SmbShare
-
 $AllContent = Get-AllContent 
 
-# $AllContent = (Get-AllContent | % { Get-LocalPathFromSharePath -Share $_.SourcePath }).ContentLocalPath
-
-# $x = ForEach ($Folder in $AllFolders) {
-#     If (($AllContent -contains $Folder) -eq $true) {
-#         [PSCustomObject]@{
-#             Folder = $Folder
-#             Result = "Yes"
-#         }
-#     }
-#     Else {
-#         [PSCustomObject]@{
-#             Folder = $Folder
-#             Result = "No"
-#         }
-#     }
-# }
