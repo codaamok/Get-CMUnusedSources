@@ -121,7 +121,8 @@ Function Get-BootImages {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $BootImage.PkgSourcePath
         If (([bool]([System.Uri]$BootImage.PkgSourcePath).IsUnc) -eq $true) {
             $Share = Get-LocalPathFromSharePath -Share $BootImage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value ($BootImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath)
+            # Using Get-Item beacuse the value is absolute path to .wim
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value (Get-Item (($BootImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath))).DirectoryName
             Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
         }
         Else {
@@ -143,7 +144,8 @@ Function Get-OSImages {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $OSImage.PkgSourcePath
         If (([bool]([System.Uri]$OSImage.PkgSourcePath).IsUnc) -eq $true) {
             $Share = Get-LocalPathFromSharePath -Share $OSImage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value ($OSImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath)
+            # Using Get-Item beacuse the value is absolute path to .wim
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value (Get-Item (($OSImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath))).DirectoryName
             Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
         }
         Else {
@@ -320,7 +322,15 @@ If (! (Test-Path "$($SiteCode):")) {
 Set-Location "$($SiteCode):" | Out-Null
 
 Write-Verbose "Getting all child folders under $SourcesLocation"
-$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
+[System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
 
 $AllContent = Get-AllContent 
+$temp = New-Object System.Collections.ArrayList
 
+ForEach ($folder in $AllFolders) {
+    ForEach ($item in $AllContent) {
+        If ($folder.StartsWith($item.SourcePathLocal)) {
+            $temp.Add($folder) | Out-Null
+        }
+    }
+}
