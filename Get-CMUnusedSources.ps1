@@ -26,27 +26,73 @@
     TODO:
         What if people mix up their source UNC path? e.g. \\sccm\applications$ or \\sccm.acc.local\applications$ or \\sccm\d$\Applications or \\192.168.0.10\applications$ ... etc ....
         Test-Path, ensure it's still alive?
+        Dashimo?
 
 #>
+[cmdletbinding(DefaultParameterSetName='1')]
 Param (
-    # Sources location
-    [Parameter(Mandatory=$true, Position = 1)]
+    [Parameter(
+        ParameterSetName='1',
+        Mandatory=$true, 
+        Position = 0
+    )]
+    [Parameter(
+        ParameterSetName='2',
+        Mandatory=$true, 
+        Position = 0
+    )]
     [ValidateScript({
         If (!($_ | Test-Path)) {
             Throw "Not a valid path."
         } ElseIf (!($_ | Test-Path -PathType Container)) {
-            Throw "Parameter value must be a folder, not file."
+            Throw "Value must be a directory, not a file"
         } Else {
             return $true
         }
     })]
-    [string]$SourcesLocation
+    [string]$SourcesLocation,
+    [Parameter(
+        ParameterSetName='1'
+    )]
+    [switch]$All = $true,
+    [Parameter(
+        ParameterSetName='2'
+    )]
+    [switch]$Packages,
+    [Parameter(
+        ParameterSetName='2'
+    )]
+    [switch]$Applications,
+    [Parameter(
+        ParameterSetName='2'
+    )]
+    [switch]$Drivers,
+    [Parameter(
+        ParameterSetName='2'
+    )]
+    [switch]$DriverPackages,
+    [Parameter(
+        ParameterSetName='2'
+    )]
+    [switch]$OSImages,
+    [Parameter(
+        ParameterSetName='2'
+    )]
+    [switch]$OSUpgradeImages,
+    [Parameter(
+        ParameterSetName='2'
+    )]
+    [switch]$BootImages,
+    [Parameter(
+        ParameterSetName='2'
+    )]
+    [switch]$DeploymentPackages
 )
 
 # Invaluable resource for getting all source locations: https://www.verboon.info/2013/07/configmgr-2012-script-to-retrieve-source-path-locations/
 
 Function Get-Packages {
-    Param($MasterObject)
+    $MasterObject = @()
     ForEach ($Package in (Get-CMPackage)) { 
         $obj = New-Object PSObject
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Package"
@@ -68,7 +114,7 @@ Function Get-Packages {
 }
 
 Function Get-Drivers {
-    Param($MasterObject)
+    $MasterObject = @()
     ForEach ($Driver in (Get-CMDriver)) {
         $obj = New-Object PSObject
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Driver"
@@ -90,7 +136,7 @@ Function Get-Drivers {
 }
 
 Function Get-DriverPackages {
-    Param($MasterObject)
+    $MasterObject = @()
     ForEach ($DriverPackage in (Get-CMDriverPackage)) {
         $obj = New-Object PSObject
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Driver Package"
@@ -112,7 +158,7 @@ Function Get-DriverPackages {
 }
 
 Function Get-BootImages {
-    Param($MasterObject)
+    $MasterObject = @()
     ForEach ($BootImage in (Get-CMBootImage)) {
         $obj = New-Object PSObject
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Boot Image"
@@ -135,7 +181,7 @@ Function Get-BootImages {
 }
 
 Function Get-OSImages {
-    Param($MasterObject)
+    $MasterObject = @()
     ForEach ($OSImage in (Get-CMOperatingSystemImage)) {
         $obj = New-Object PSObject
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Operating System Image"
@@ -158,7 +204,7 @@ Function Get-OSImages {
 }
 
 Function Get-OSUpgradeImage {
-    Param($MasterObject)
+    $MasterObject = @()
     ForEach ($OSUpgradeImage in (Get-CMOperatingSystemInstaller)) {
         $obj = New-Object PSObject
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Operating System Upgrade Image"
@@ -180,7 +226,7 @@ Function Get-OSUpgradeImage {
 }
 
 Function Get-DeploymentPackages {
-    Param($MasterObject)
+    $MasterObject = @()
     ForEach ($DeploymentPackage in (Get-CMSoftwareUpdateDeploymentPackage)) {
         $obj = New-Object PSObject
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Deployment Package"
@@ -202,14 +248,14 @@ Function Get-DeploymentPackages {
 }
 
 Function Get-Applications {
-    Param($MasterObject)
+    $MasterObject = @()
     ForEach ($Application in (Get-CMApplication)) {
         $AppMgmt = ([xml]$Application.SDMPackageXML).AppMgmtDigest
         $AppName = $AppMgmt.Application.DisplayInfo.FirstChild.Title
         ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
             $obj = New-Object PSObject
             Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Application"
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)/$($DeploymentType.Version)"
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)"
             Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($Application.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
             Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $DeploymentType.Installer.Contents.Content.Location
             If (([bool]([System.Uri]$DeploymentType.Installer.Contents.Content.Location).IsUnc) -eq $true) {
@@ -225,20 +271,6 @@ Function Get-Applications {
         }
     }
     return $MasterObject
-}
-
-Function Get-AllContent {
-    Clear-Variable Content -ErrorAction SilentlyContinue
-    $Content = @()
-    Get-Packages -MasterObject $Content
-    Get-Drivers -MasterObject $Content
-    Get-DriverPackages -MasterObject $Content
-    Get-BootImages -MasterObject $Content
-    Get-OSImages -MasterObject $Content
-    Get-OSUpgradeImage -MasterObject $Content
-    Get-DeploymentPackages -MasterObject $Content
-    Get-Applications -MasterObject $Content
-    return $Content
 }
 
 function Test-UNC {
@@ -301,17 +333,20 @@ function Get-LocalPathFromSharePath {
 	$Server = $RegexMatch.Groups[1].Value
 	$ShareName = $RegexMatch.Groups[2].Value
 	
-	#$Shares = Invoke-Command -ComputerName $Server -ScriptBlock {
-	#	get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares
-	#}
-    $Shares = get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares
-	$ShareLocalPath = ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path="
+    If ($ShareName -match "^[a-z]\`$$") { # if a drive letter
+        $ShareLocalPath = ($Matches[0] -replace "\$", ":").ToUpper() # just because it makes me feel itchy if it isn't
+    }
+    Else {
+        $Shares = Invoke-Command -ComputerName $Server -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
+        $ShareLocalPath = ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path="
+    }
 	[PSCustomObject]@{
 		ComputerName    = $Server
 		LocalPath       = $ShareLocalPath
 	}
 }
 
+$OriginalPath = (Get-Location).Path
 $configManagerCmdLetpath = Join-Path $(Split-Path $env:SMS_ADMIN_UI_PATH) "ConfigurationManager.psd1"
 Import-Module $configManagerCmdLetpath -Force
 $SiteCode = Get-SiteCode
@@ -321,16 +356,96 @@ If (! (Test-Path "$($SiteCode):")) {
 }
 Set-Location "$($SiteCode):" | Out-Null
 
-Write-Verbose "Getting all child folders under $SourcesLocation"
-[System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
+Clear-Variable AllContent -ErrorAction SilentlyContinue
+[System.Collections.ArrayList]$AllContent = @()
 
-$AllContent = Get-AllContent 
-$temp = New-Object System.Collections.ArrayList
-
-ForEach ($folder in $AllFolders) {
-    ForEach ($item in $AllContent) {
-        If ($folder.StartsWith($item.SourcePathLocal)) {
-            $temp.Add($folder) | Out-Null
-        }
+switch ($true) {
+    (($Packages -eq $true) -Or ($All -eq $true)) {
+        $AllContent = Get-Packages
+    }
+    (($Applications -eq $true) -Or ($All -eq $true)) {
+        $AllContent = Get-Applications
+    }
+    (($Drivers -eq $true) -Or ($All -eq $true)) {
+        $AllContent = Get-Drivers
+    }
+    (($DriverPackages -eq $true) -Or ($All -eq $true)) {
+        $AllContent = Get-DriverPackages
+    }
+    (($OSImages -eq $true) -Or ($All -eq $true)) {
+        $AllContent = Get-OSImages
+    }
+    (($OSUpgradeImages -eq $true) -Or ($All -eq $true)) {
+        $AllContent = Get-OSUpgradeImage
+    }
+    (($BootImages -eq $true) -Or ($All -eq $true)) {
+        $AllContent = Get-BootImages
+    }
+    (($DeploymentPackages -eq $true) -Or ($All -eq $true)) {
+        $AllContent = Get-DeploymentPackages
     }
 }
+
+[System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
+
+$Results = @()
+
+ForEach ($Folder in $AllFolders) { # For every folder
+
+    Write-Progress -Activity "Looping through folders" -CurrentOperation "$Folder" -id 1 -PercentComplete (($AllFolders.IndexOf($Folder) / $AllFolders.count) * 100) -Status "Finding content that uses"
+    
+    $obj = New-Object PSObject
+    Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $Folder
+
+    $UsedBy = @()
+    $IntermediatePath = $false
+    $ToSkip = $false
+
+    If ($Folder.StartsWith($ToSkip)) { # Don't walk through folders that aren't a sub or parent folder for any content objects
+        $NotUsed = $true
+    }
+    Else {
+        ForEach ($item in $AllContent) { # For every content object
+            $SourcePathLocalTrimmed = ($item.SourcePathLocal).TrimEnd("\")
+            $FolderTrimmed = ($Folder).TrimEnd("\")
+            switch ($true) {
+                ($SourcePathLocalTrimmed -eq $FolderTrimmed) {
+                    $UsedBy += $item
+                    break
+                }
+                (($FolderTrimmed.StartsWith($SourcePathLocalTrimmed) -Or ($SourcePathLocalTrimmed.StartsWith($FolderTrimmed)))) {
+                    $IntermediatePath = $true
+                    break
+                }
+                default {
+                    $ToSkip = $Folder
+                    $NotUsed = $true
+                }
+            }
+        }
+
+    }
+
+    switch ($true) {
+        ($UsedBy.count -gt 0) {
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy.Name) -join ', ')
+            ForEach ($item in $UsedBy) {
+               $AllContent.Remove($item) # Stop me walking through content objects that I've already found 
+            }
+            break
+        }
+        ($IntermediatePath -eq $true) {
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
+            break
+        }
+        ($NotUsed -eq $true) {
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
+            break
+        }
+    }
+
+    $Results += $obj
+    
+}
+
+Set-Location $OriginalPath
