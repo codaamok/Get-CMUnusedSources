@@ -29,6 +29,7 @@
         Dashimo?
 
 #>
+#Requires -RunAsAdministrator
 [cmdletbinding(DefaultParameterSetName='1')]
 Param (
     [Parameter(
@@ -42,8 +43,10 @@ Param (
         Position = 0
     )]
     [ValidateScript({
-        If (!($_ | Test-Path)) {
-            Throw "Not a valid path."
+        If ([bool]([System.Uri]$Package.PkgSourcePath).IsUnc -eq $false) {
+            Throw "Must provide UNC path"
+        } ElseIf (!($_ | Test-Path)) {
+            Throw "Invalid path or insufficient permissions"
         } ElseIf (!($_ | Test-Path -PathType Container)) {
             Throw "Value must be a directory, not a file"
         } Else {
@@ -99,15 +102,6 @@ Function Get-Packages {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $Package.PackageId
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $Package.Name
         Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $Package.PkgSourcePath
-        If (([bool]([System.Uri]$Package.PkgSourcePath).IsUnc) -eq $true) {
-            $Share = Get-LocalPathFromSharePath -Share $Package.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value ($Package.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath)
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
-        }
-        Else {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value $Package.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value $null
-        }
         $MasterObject += $obj
     }
     return $MasterObject
@@ -121,15 +115,6 @@ Function Get-Drivers {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $Driver.CI_ID
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $Driver.LocalizedDisplayName
         Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $Driver.ContentSourcePath
-        If (([bool]([System.Uri]$Driver.ContentSourcePath).IsUnc) -eq $true) {
-            $Share = Get-LocalPathFromSharePath -Share $Driver.ContentSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value ($Driver.ContentSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath)
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
-        }
-        Else {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value $Driver.ContentSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value $null
-        }
         $MasterObject += $obj
     }
     return $MasterObject
@@ -143,15 +128,6 @@ Function Get-DriverPackages {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $DriverPackage.PackageId
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $DriverPackage.Name
         Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $DriverPackage.PkgSourcePath
-        If (([bool]([System.Uri]$DriverPackage.PkgSourcePath).IsUnc) -eq $true) {
-            $Share = Get-LocalPathFromSharePath -Share $DriverPackage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value ($DriverPackage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath)
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
-        }
-        Else {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value $DriverPackage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value $null
-        }
         $MasterObject += $obj
     }
     return $MasterObject
@@ -164,17 +140,7 @@ Function Get-BootImages {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Boot Image"
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $BootImage.PackageId
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $BootImage.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $BootImage.PkgSourcePath
-        If (([bool]([System.Uri]$BootImage.PkgSourcePath).IsUnc) -eq $true) {
-            $Share = Get-LocalPathFromSharePath -Share $BootImage.PkgSourcePath
-            # Using Get-Item beacuse the value is absolute path to .wim
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value (Get-Item (($BootImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath))).DirectoryName
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
-        }
-        Else {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value $BootImage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value $null
-        }
+        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath (Get-Item (($BootImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath))).DirectoryName
         $MasterObject += $obj
     }
     return $MasterObject
@@ -187,17 +153,7 @@ Function Get-OSImages {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Operating System Image"
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $OSImage.PackageId
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $OSImage.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $OSImage.PkgSourcePath
-        If (([bool]([System.Uri]$OSImage.PkgSourcePath).IsUnc) -eq $true) {
-            $Share = Get-LocalPathFromSharePath -Share $OSImage.PkgSourcePath
-            # Using Get-Item beacuse the value is absolute path to .wim
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value (Get-Item (($OSImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath))).DirectoryName
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
-        }
-        Else {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value $OSImage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value $null
-        }
+        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath (Get-Item (($OSImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath))).DirectoryName
         $MasterObject += $obj
     }
     return $MasterObject
@@ -211,15 +167,6 @@ Function Get-OSUpgradeImage {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $OSUpgradeImage.PackageId
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $OSUpgradeImage.Name
         Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $OSUpgradeImage.PkgSourcePath
-        If (([bool]([System.Uri]$OSUpgradeImage.PkgSourcePath).IsUnc) -eq $true) {
-            $Share = Get-LocalPathFromSharePath -Share $OSUpgradeImage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value ($OSUpgradeImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath)
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
-        }
-        Else {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value $OSUpgradeImage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value $null
-        }
         $MasterObject += $obj
     }
     return $MasterObject
@@ -233,15 +180,6 @@ Function Get-DeploymentPackages {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $DeploymentPackage.PackageId
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $DeploymentPackage.Name
         Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $DeploymentPackage.PkgSourcePath
-        If (([bool]([System.Uri]$DeploymentPackage.PkgSourcePath).IsUnc) -eq $true) {
-            $Share = Get-LocalPathFromSharePath -Share $DeploymentPackage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value ($DeploymentPackage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath)
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
-        }
-        Else {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value $DeploymentPackage.PkgSourcePath
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value $null
-        }
         $MasterObject += $obj
     }
     return $MasterObject
@@ -258,22 +196,13 @@ Function Get-Applications {
             Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)"
             Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($Application.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
             Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $DeploymentType.Installer.Contents.Content.Location
-            If (([bool]([System.Uri]$DeploymentType.Installer.Contents.Content.Location).IsUnc) -eq $true) {
-                $Share = Get-LocalPathFromSharePath -Share $DeploymentType.Installer.Contents.Content.Location
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value ($DeploymentType.Installer.Contents.Content.Location -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath)
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value ($Share.LocalPath)
-            }
-            Else {
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathLocal -Value $DeploymentType.Installer.Contents.Content.Location
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name SharePathLocal -Value $null
-            }
             $MasterObject += $obj
         }
     }
     return $MasterObject
 }
 
-function Test-UNC {
+Function Test-UNC {
     #http://blogs.microsoft.co.il/scriptfanatic/2010/05/27/quicktip-how-to-validate-a-unc-path/ 
     Param(
         [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
@@ -287,7 +216,7 @@ function Test-UNC {
     }
 }
 
-Function Get-SiteCode {
+Function Set-CMDrive {
     <#
     .SYNOPSIS
        Attempt to determine the current device's site code from the registry or PS drive.
@@ -318,71 +247,74 @@ Function Get-SiteCode {
             $SiteCode = $PSDrive.Name
         }
     }
+    $configManagerCmdLetpath = Join-Path $(Split-Path $env:SMS_ADMIN_UI_PATH) "ConfigurationManager.psd1"
+    Import-Module $configManagerCmdLetpath -Force
+    #If the PS drive doesn't exist then try to create it.
+    If (! (Test-Path "$($SiteCode):")) {
+        New-PSDrive -Name $SiteCode -PSProvider CMSite -Root "." | Out-Null
+    }
+    Set-Location "$($SiteCode):" | Out-Null
+}
 
-    Return $SiteCode
-}    
-
-function Get-LocalPathFromSharePath {
-    # Yet another Cody special
+Function Get-AllPossibleUNCPaths {
 	param (
 		[ValidatePattern("\\\\(.+)(\\).+")]
 		[string]$Share
-	)
-	$Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)"
+    )
+    $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)"
 	$RegexMatch = [regex]::Match($Share, $Regex)
 	$Server = $RegexMatch.Groups[1].Value
-	$ShareName = $RegexMatch.Groups[2].Value
-	
-    If ($ShareName -match "^[a-z]\`$$") { # if a drive letter
-        $ShareLocalPath = ($Matches[0] -replace "\$", ":").ToUpper() # just because it makes me feel itchy if it isn't
-    }
-    Else {
-        $Shares = Invoke-Command -ComputerName $Server -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
-        $ShareLocalPath = ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path="
-    }
-	[PSCustomObject]@{
-		ComputerName    = $Server
-		LocalPath       = $ShareLocalPath
-	}
+    $ShareName = $RegexMatch.Groups[2].Value
+
+    $Shares = Invoke-Command -ComputerName $Server -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
+    $ShareLocalPath = ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path="
+
+    $FQDN = [System.Net.Dns]::GetHostByName(("$($server)")).HostName
+    $NetBIOS = $FQDN.Split(".")[0]
+    $IP = (((Test-Connection $server -Count 1 -ErrorAction SilentlyContinue)).IPV4Address).IPAddressToString
+    $Full = Get-LocalPathFromSharePath -Share $Share
+
+    $All = @()
+    $All += "\\$($NetBIOS)\$($ShareName)"
+    $All += "\\$($NetBIOS)\$($ShareLocalPath -replace ':', '$')"
+    $All += "\\$($FQDN)\$($ShareName)"
+    $All += "\\$($FQDN)\$($ShareLocalPath -replace ':', '$')"
+    $All += "\\$($IP)\$($ShareName)"
+    $All += "\\$($IP)\$($ShareLocalPath -replace ':', '$')"
+
+    return $All
 }
 
 $OriginalPath = (Get-Location).Path
-$configManagerCmdLetpath = Join-Path $(Split-Path $env:SMS_ADMIN_UI_PATH) "ConfigurationManager.psd1"
-Import-Module $configManagerCmdLetpath -Force
-$SiteCode = Get-SiteCode
-#If the PS drive doesn't exist then try to create it.
-If (! (Test-Path "$($SiteCode):")) {
-    New-PSDrive -Name $SiteCode -PSProvider CMSite -Root "." -WhatIf:$False | Out-Null
-}
-Set-Location "$($SiteCode):" | Out-Null
+Set-CMDrive
 
 Clear-Variable AllContent -ErrorAction SilentlyContinue
 [System.Collections.ArrayList]$AllContent = @()
 
 switch ($true) {
     (($Packages -eq $true) -Or ($All -eq $true)) {
-        $AllContent = Get-Packages
+        $AllContent += Get-Packages
     }
     (($Applications -eq $true) -Or ($All -eq $true)) {
-        $AllContent = Get-Applications
+        $AllContent += Get-Applications
     }
     (($Drivers -eq $true) -Or ($All -eq $true)) {
-        $AllContent = Get-Drivers
+        $AllContent += Get-Drivers
     }
     (($DriverPackages -eq $true) -Or ($All -eq $true)) {
-        $AllContent = Get-DriverPackages
+        $AllContent += Get-DriverPackages
     }
     (($OSImages -eq $true) -Or ($All -eq $true)) {
-        $AllContent = Get-OSImages
+        $AllContent += Get-OSImages
     }
     (($OSUpgradeImages -eq $true) -Or ($All -eq $true)) {
-        $AllContent = Get-OSUpgradeImage
+        $AllContent += Get-OSUpgradeImage
     }
     (($BootImages -eq $true) -Or ($All -eq $true)) {
-        $AllContent = Get-BootImages
+        $AllContent += Get-BootImages
     }
     (($DeploymentPackages -eq $true) -Or ($All -eq $true)) {
-        $AllContent = Get-DeploymentPackages
+        $AllContent += Get-DeploymentPackages
     }
 }
 
@@ -449,3 +381,5 @@ ForEach ($Folder in $AllFolders) { # For every folder
 }
 
 Set-Location $OriginalPath
+
+return $Results, $AllContent
