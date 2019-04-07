@@ -43,9 +43,7 @@ Param (
         Position = 0
     )]
     [ValidateScript({
-        If ([bool]([System.Uri]$Package.PkgSourcePath).IsUnc -eq $false) {
-            Throw "Must provide UNC path"
-        } ElseIf (!($_ | Test-Path)) {
+        If (!($_ | Test-Path)) {
             Throw "Invalid path or insufficient permissions"
         } ElseIf (!($_ | Test-Path -PathType Container)) {
             Throw "Value must be a directory, not a file"
@@ -140,7 +138,7 @@ Function Get-BootImages {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Boot Image"
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $BootImage.PackageId
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $BootImage.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath (Get-Item (($BootImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath))).DirectoryName
+        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $BootImage.PkgSourcePath
         $MasterObject += $obj
     }
     return $MasterObject
@@ -153,7 +151,7 @@ Function Get-OSImages {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Operating System Image"
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $OSImage.PackageId
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $OSImage.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath (Get-Item (($OSImage.PkgSourcePath -replace "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)", $Share.LocalPath))).DirectoryName
+        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $OSImage.PkgSourcePath
         $MasterObject += $obj
     }
     return $MasterObject
@@ -202,20 +200,6 @@ Function Get-Applications {
     return $MasterObject
 }
 
-Function Test-UNC {
-    #http://blogs.microsoft.co.il/scriptfanatic/2010/05/27/quicktip-how-to-validate-a-unc-path/ 
-    Param(
-        [Parameter(Mandatory=$true,Position=0,ValueFromPipeline=$true,ValueFromPipelineByPropertyName=$true)]
-        [Alias('FullName')]
-        [System.String[]]$Path
-    )
-    Process {
-        ForEach($p in $Path) {
-            [bool]([System.Uri]$p).IsUnc
-        }
-    }
-}
-
 Function Set-CMDrive {
     <#
     .SYNOPSIS
@@ -256,33 +240,28 @@ Function Set-CMDrive {
     Set-Location "$($SiteCode):" | Out-Null
 }
 
-Function Get-AllPossibleUNCPaths {
-	param (
-		[ValidatePattern("\\\\(.+)(\\).+")]
-		[string]$Share
+Function Get-LocalPathFromUNCShare {
+    param (
+        [ValidatePattern("\\\\(.+)(\\).+")]
+        [Parameter(Mandatory=$true)]
+        [string]$Share
     )
     $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)"
-	$RegexMatch = [regex]::Match($Share, $Regex)
-	$Server = $RegexMatch.Groups[1].Value
-    $ShareName = $RegexMatch.Groups[2].Value
+    $RegexMatch = [regex]::Match($Share, $Regex)
+    $Server = $RegexMatch.Groups[1].Value
 
     $Shares = Invoke-Command -ComputerName $Server -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
-    $ShareLocalPath = ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path="
 
-    $FQDN = [System.Net.Dns]::GetHostByName(("$($server)")).HostName
-    $NetBIOS = $FQDN.Split(".")[0]
-    $IP = (((Test-Connection $server -Count 1 -ErrorAction SilentlyContinue)).IPV4Address).IPAddressToString
-    $Full = Get-LocalPathFromSharePath -Share $Share
+    If (($Shares | Get-Member -MemberType NoteProperty | Measure-Object).Count -gt 0) {
+        $result = @{}
+        ForEach ($ShareName in (($Shares.PSObject.Properties).Name)) {
+            If (($ShareLocalPath = ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path=") -ne $null) {
+                $result.add("\\$($Server)\$($ShareName)", $ShareLocalPath)
+            }
+        }
+    }
 
-    $All = @()
-    $All += "\\$($NetBIOS)\$($ShareName)"
-    $All += "\\$($NetBIOS)\$($ShareLocalPath -replace ':', '$')"
-    $All += "\\$($FQDN)\$($ShareName)"
-    $All += "\\$($FQDN)\$($ShareLocalPath -replace ':', '$')"
-    $All += "\\$($IP)\$($ShareName)"
-    $All += "\\$($IP)\$($ShareLocalPath -replace ':', '$')"
-
-    return $All
+    return $result
 }
 
 $OriginalPath = (Get-Location).Path
@@ -320,66 +299,12 @@ switch ($true) {
 
 [System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
 
-$Results = @()
+# ForEach ($Folder in $AllFolders) { # For every folder
 
-ForEach ($Folder in $AllFolders) { # For every folder
+#     ForEach ($item in $AllContent) { # For every content object
 
-    Write-Progress -Activity "Looping through folders" -CurrentOperation "$Folder" -id 1 -PercentComplete (($AllFolders.IndexOf($Folder) / $AllFolders.count) * 100) -Status "Finding content that uses"
-    
-    $obj = New-Object PSObject
-    Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $Folder
+#     }
 
-    $UsedBy = @()
-    $IntermediatePath = $false
-    $ToSkip = $false
-
-    If ($Folder.StartsWith($ToSkip)) { # Don't walk through folders that aren't a sub or parent folder for any content objects
-        $NotUsed = $true
-    }
-    Else {
-        ForEach ($item in $AllContent) { # For every content object
-            $SourcePathLocalTrimmed = ($item.SourcePathLocal).TrimEnd("\")
-            $FolderTrimmed = ($Folder).TrimEnd("\")
-            switch ($true) {
-                ($SourcePathLocalTrimmed -eq $FolderTrimmed) {
-                    $UsedBy += $item
-                    break
-                }
-                (($FolderTrimmed.StartsWith($SourcePathLocalTrimmed) -Or ($SourcePathLocalTrimmed.StartsWith($FolderTrimmed)))) {
-                    $IntermediatePath = $true
-                    break
-                }
-                default {
-                    $ToSkip = $Folder
-                    $NotUsed = $true
-                }
-            }
-        }
-
-    }
-
-    switch ($true) {
-        ($UsedBy.count -gt 0) {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy.Name) -join ', ')
-            ForEach ($item in $UsedBy) {
-               $AllContent.Remove($item) # Stop me walking through content objects that I've already found 
-            }
-            break
-        }
-        ($IntermediatePath -eq $true) {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
-            break
-        }
-        ($NotUsed -eq $true) {
-            Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
-            break
-        }
-    }
-
-    $Results += $obj
-    
-}
+# }
 
 Set-Location $OriginalPath
-
-return $Results, $AllContent
