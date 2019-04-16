@@ -24,9 +24,18 @@
     1
 
     TODO:
-        What if people mix up their source UNC path? e.g. \\sccm\applications$ or \\sccm.acc.local\applications$ or \\sccm\d$\Applications or \\192.168.0.10\applications$ ... etc ....
-        Test-Path, ensure it's still alive?
-        Dashimo?
+        - Comment regex
+        - Dashimo?
+        - How to handle access denied on folders?
+        
+    Problems:
+        - Some content objects are absolute references to files, e.g. boot images and either OS or OS upgrade images
+        - Need to add local path to $AllPaths surely? Perhaps need a "Server" property too in case of: 
+        - Have I stupidly assumed share name is same as folder name on disk???
+
+    Think I fixed? Not 100% confident:
+        - Adding server property to $AllPaths for the below purpose. : If content object SourcePath is e.g. \\FILESERVER\SCCMSources\Applications\7zip\x64 and local path resolves to F:\SCCMSources\Applications\7zip\x64 and user gigves -SourcesLocations as F:\ and F:\Applications\7zip\x64 exists on primary site server (where script should be running from) this will produce a false positive
+
 
 #>
 #Requires -RunAsAdministrator
@@ -92,18 +101,55 @@ Param (
 
 # Invaluable resource for getting all source locations: https://www.verboon.info/2013/07/configmgr-2012-script-to-retrieve-source-path-locations/
 
-Function Get-Packages {
+Function Get-AllContentMinusApplicationsAndDrivers {
+    $Commands = "Get-CMPackage", "Get-CMDriverPackage", "Get-CMBootImage", "Get-CMOperatingSystemImage", "Get-CMOperatingSystemInstaller", "Get-CMSoftwareUpdateDeploymentPackage"
     $MasterObject = @()
-    ForEach ($Package in (Get-CMPackage)) { 
-        $obj = New-Object PSObject
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Package"
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $Package.PackageId
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $Package.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $Package.PkgSourcePath
-        $MasterObject += $obj
+    $ShareCache = @{}
+    ForEach ($Command in $Commands) {
+        ForEach ($item in (Invoke-Expression $Command)) {
+            $AllPaths = @{}
+            $obj = New-Object PSObject
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.PackageId
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.Name
+            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $item.PkgSourcePath
+            If ([bool]([System.Uri]$item.PkgSourcePath).IsUnc -eq $true) {
+                # Check cache
+                $Regex = "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]*"
+                $RegexMatch = [regex]::Match($item.PkgSourcePath,$Regex)
+                If ($ShareCache.ContainsKey($RegexMatch.Groups[0].Value) -eq $false) {
+                    $ShareLocalPath = Get-LocalPathFromUNCShare -Share $item.PkgSourcePath
+                    $ShareCache.Add($RegexMatch.Groups[0].Value, $ShareLocalPath)
+                }
+                Else {
+                    $ShareLocalPath = $ShareCache.($RegexMatch.Groups[0].Value)
+                }
+                $AllPaths = Get-AllPossibleUNCPaths -Share $item.PkgSourcePath -LocalPath $ShareLocalPath
+                Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $AllPaths
+                # Update cache
+                ForEach ($Path in $AllPaths.GetEnumerator()) {
+                    If ([bool]([System.Uri]$Path.Name).IsUnc -eq $true) { # Don't add the local path to the cache
+                        $Regex = "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]*" # grab Server + Share, e.g. \\server\share
+                        $RegexMatch = [regex]::Match($Path.Name,$Regex)
+                        $Regex = "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z]\$" # grab Server + drive share, e.g. \\server\c$
+                        If (($ShareCache.ContainsKey($RegexMatch.Groups[0].Value) -eq $false) -And ($RegexMatch.Groups[0].Value -notmatch $Regex)) {
+                            $ShareCache.Add($RegexMatch.Groups[0].Value,$ShareLocalPath)
+                        }
+                    }
+                }
+            }
+            Else {
+                $AllPaths.Add($item.PkgSourcePath, $env:COMPUTERNAME)
+                Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $AllPaths
+            }
+            $MasterObject += $obj
+        }
     }
-    return $MasterObject
+    $ShareCache
+    $MasterObject
 }
+
+ # Drivers and Applications on their own
 
 Function Get-Drivers {
     $MasterObject = @()
@@ -113,71 +159,6 @@ Function Get-Drivers {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $Driver.CI_ID
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $Driver.LocalizedDisplayName
         Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $Driver.ContentSourcePath
-        $MasterObject += $obj
-    }
-    return $MasterObject
-}
-
-Function Get-DriverPackages {
-    $MasterObject = @()
-    ForEach ($DriverPackage in (Get-CMDriverPackage)) {
-        $obj = New-Object PSObject
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Driver Package"
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $DriverPackage.PackageId
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $DriverPackage.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $DriverPackage.PkgSourcePath
-        $MasterObject += $obj
-    }
-    return $MasterObject
-}
-
-Function Get-BootImages {
-    $MasterObject = @()
-    ForEach ($BootImage in (Get-CMBootImage)) {
-        $obj = New-Object PSObject
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Boot Image"
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $BootImage.PackageId
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $BootImage.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $BootImage.PkgSourcePath
-        $MasterObject += $obj
-    }
-    return $MasterObject
-}
-
-Function Get-OSImages {
-    $MasterObject = @()
-    ForEach ($OSImage in (Get-CMOperatingSystemImage)) {
-        $obj = New-Object PSObject
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Operating System Image"
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $OSImage.PackageId
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $OSImage.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $OSImage.PkgSourcePath
-        $MasterObject += $obj
-    }
-    return $MasterObject
-}
-
-Function Get-OSUpgradeImage {
-    $MasterObject = @()
-    ForEach ($OSUpgradeImage in (Get-CMOperatingSystemInstaller)) {
-        $obj = New-Object PSObject
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Operating System Upgrade Image"
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $OSUpgradeImage.PackageId
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $OSUpgradeImage.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $OSUpgradeImage.PkgSourcePath
-        $MasterObject += $obj
-    }
-    return $MasterObject
-}
-
-Function Get-DeploymentPackages {
-    $MasterObject = @()
-    ForEach ($DeploymentPackage in (Get-CMSoftwareUpdateDeploymentPackage)) {
-        $obj = New-Object PSObject
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Deployment Package"
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $DeploymentPackage.PackageId
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $DeploymentPackage.Name
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $DeploymentPackage.PkgSourcePath
         $MasterObject += $obj
     }
     return $MasterObject
@@ -201,19 +182,6 @@ Function Get-Applications {
 }
 
 Function Set-CMDrive {
-    <#
-    .SYNOPSIS
-       Attempt to determine the current device's site code from the registry or PS drive.
-       Author: Bryan Dam (damgoodadmin.com)
-    
-    .DESCRIPTION
-       When ran this function will look for the client's site.  If not found it will look for a single PS drive.
-    
-    .EXAMPLE
-       Get-SiteCode
-    
-    #>
-    
     #Try getting the site code from the client installed on this system.
     If (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Identification" "Site Code"){
         $SiteCode =  Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Identification" | Select-Object -ExpandProperty "Site Code"
@@ -240,71 +208,118 @@ Function Set-CMDrive {
     Set-Location "$($SiteCode):" | Out-Null
 }
 
+Function Get-AllPossibleUNCPaths {
+    param (
+        [ValidatePattern("\\\\(.+)(\\).+")]
+        [Parameter(Mandatory=$true)]
+        [string]$Share,
+        [string]$LocalPath
+    )
+    $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~\\!@#$%^&(){}\'._-]+)*"
+    $RegexMatch = [regex]::Match($Share, $Regex)
+
+    switch ($true) {
+        ($RegexMatch.Groups[1].Success -eq $true) {
+            $Server = $RegexMatch.Groups[1].Value
+        }
+        ($RegexMatch.Groups[2].Success -eq $true) {
+            $ShareName = $RegexMatch.Groups[2].Value
+        }
+        ($RegexMatch.Groups[3].Success -eq $true) {
+            $ShareNameRemainder = "\" + $RegexMatch.Groups[3].Value
+        }
+        default { # do some sort of error handling with this later? prob not necessary as .IsUnc from its caller probably qualifiees it already?
+            $Server = ""
+            $ShareName = ""
+            $ShareNameRemainder = ""
+        }
+    }
+
+    $FQDN = [System.Net.Dns]::GetHostByName(("$($Server)")).HostName
+    $NetBIOS = $FQDN.Split(".")[0]
+    $IP = (((Test-Connection $Server -Count 1 -ErrorAction SilentlyContinue)).IPV4Address).IPAddressToString
+
+    $result = @{}
+
+    $result.Add("\\$($FQDN)\$($ShareName)$($ShareNameRemainder)", $NetBIOS)
+    $result.Add(("\\$($FQDN)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$'), $NetBIOS)
+    $result.Add("\\$($NetBIOS)\$($ShareName)$($ShareNameRemainder)", $NetBIOS)
+    $result.Add(("\\$($NetBIOS)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$'), $NetBIOS)
+    $result.Add("\\$($IP)\$($ShareName)$($ShareNameRemainder)", $NetBIOS)
+    $result.Add(("\\$($IP)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$'), $NetBIOS)
+    $result.Add("$($LocalPath)$($ShareNameRemainder)",$NetBIOS)
+
+    return $result
+}
+
 Function Get-LocalPathFromUNCShare {
     param (
         [ValidatePattern("\\\\(.+)(\\).+")]
         [Parameter(Mandatory=$true)]
         [string]$Share
     )
-    $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)"
-    $RegexMatch = [regex]::Match($Share, $Regex)
-    $Server = $RegexMatch.Groups[1].Value
 
+    $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)"
+    $RegexMatch = [regex]::Match($item.PkgSourcePath, $Regex)
+    $Server = $RegexMatch.Groups[1].Value
+    $ShareName = $RegexMatch.Groups[2].Value
+    
     $Shares = Invoke-Command -ComputerName $Server -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
 
-    If (($Shares | Get-Member -MemberType NoteProperty | Measure-Object).Count -gt 0) {
-        $result = @{}
-        ForEach ($ShareName in (($Shares.PSObject.Properties).Name)) {
-            If (($ShareLocalPath = ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path=") -ne $null) {
-                $result.add("\\$($Server)\$($ShareName)", $ShareLocalPath)
-            }
-        }
-    }
-
-    return $result
+    return ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path="
 }
 
 $OriginalPath = (Get-Location).Path
 Set-CMDrive
 
-Clear-Variable AllContent -ErrorAction SilentlyContinue
-[System.Collections.ArrayList]$AllContent = @()
+[System.Collections.ArrayList]$AllContentObjects = @()
 
 switch ($true) {
     (($Packages -eq $true) -Or ($All -eq $true)) {
-        $AllContent += Get-Packages
+        $AllContentObjects += Get-Packages
     }
     (($Applications -eq $true) -Or ($All -eq $true)) {
-        $AllContent += Get-Applications
+        $AllContentObjects += Get-Applications
     }
     (($Drivers -eq $true) -Or ($All -eq $true)) {
-        $AllContent += Get-Drivers
+        $AllContentObjects += Get-Drivers
     }
     (($DriverPackages -eq $true) -Or ($All -eq $true)) {
-        $AllContent += Get-DriverPackages
+        $AllContentObjects += Get-DriverPackages
     }
     (($OSImages -eq $true) -Or ($All -eq $true)) {
-        $AllContent += Get-OSImages
+        $AllContentObjects += Get-OSImages
     }
     (($OSUpgradeImages -eq $true) -Or ($All -eq $true)) {
-        $AllContent += Get-OSUpgradeImage
+        $AllContentObjects += Get-OSUpgradeImage
     }
     (($BootImages -eq $true) -Or ($All -eq $true)) {
-        $AllContent += Get-BootImages
+        $AllContentObjects += Get-BootImages
     }
     (($DeploymentPackages -eq $true) -Or ($All -eq $true)) {
-        $AllContent += Get-DeploymentPackages
+        $AllContentObjects += Get-DeploymentPackages
     }
 }
 
+# Must be a beter way than this
 [System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
+$AllFolders.Add($SourcesLocation) # Add what the user gave us
+$AllFolders = $AllFolders | Sort
 
-# ForEach ($Folder in $AllFolders) { # For every folder
+$Shares = @{}
 
-#     ForEach ($item in $AllContent) { # For every content object
+ForEach ($Folder in $AllFolders) { # For every folder
 
-#     }
+    ForEach ($ContentObject in $AllContentObjects) { # For every content object
 
-# }
+        If ([bool]([System.Uri]$SourcesLocation).IsUnc -eq $true) {
+
+        } Else {
+
+        }
+
+    }
+
+}
 
 Set-Location $OriginalPath
