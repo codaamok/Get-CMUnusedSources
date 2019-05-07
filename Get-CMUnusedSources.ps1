@@ -52,7 +52,7 @@ Param (
         Position = 0
     )]
     [ValidateScript({
-        If (!($_ | Test-Path)) {
+        If (!([System.IO.Directory]::Exists($_)) {
             Throw "Invalid path or access denied"
         } ElseIf (!($_ | Test-Path -PathType Container)) {
             Throw "Value must be a directory, not a file"
@@ -167,8 +167,51 @@ Function Get-AllPaths {
         [hashtable]$Cache
     )
 
+    $AllPaths = @{}
+
     If ([bool]([System.Uri]$Path).IsUnc -eq $true) {
-        $AllPaths = @{}
+        
+        # Grab server, share and remainder of path in to 4 groups: group 0 (whole match) "\\server\share\folder\folder", group 1 = "server", group 2 = "share", group 3 = "folder\folder"
+        $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)\\([a-zA-Z0-9`~\\!@#$%^&(){}\'._ -]+)*" 
+        $RegexMatch = [regex]::Match($Path, $Regex)
+        switch ($true) {
+            ($RegexMatch.Groups[1].Success -eq $true) {
+                $Server = $RegexMatch.Groups[1].Value
+            }
+            ($RegexMatch.Groups[2].Success -eq $true) {
+                $ShareName = $RegexMatch.Groups[2].Value
+            }
+            ($RegexMatch.Groups[3].Success -eq $true) {
+                $ShareNameRemainder = "\" + $RegexMatch.Groups[3].Value
+            }
+            default { # do some sort of error handling with this later? prob not necessary as .IsUnc from its caller probably qualifiees it already?
+                $Server = ""
+                $ShareName = ""
+                $ShareNameRemainder = ""
+            }
+        }
+
+        If ($Server -as [IPAddress]) {
+            $FQDN = [System.Net.Dns]::GetHostEntry("$($Server)").HostName
+            $IP = $Server
+        }
+        Else {
+            $FQDN = [System.Net.Dns]::GetHostByName($Server).HostName
+            $IP = (((Test-Connection $Server -Count 1 -ErrorAction SilentlyContinue)).IPV4Address).IPAddressToString
+        }
+        $NetBIOS = $FQDN.Split(".")[0]
+        
+    
+        If ($Cache.ContainsKey($Server)) {
+            # Already have this server's shares cached
+        }
+        Else {
+            # Do not yet have this server's shares cached
+            $Cache.Add($NetBIOS, (Get-AllSharedFolders -Server $Server))
+            $Cache.Add($FQDN, (Get-AllSharedFolders -Server $Server))
+            $Cache.Add($IP, (Get-AllSharedFolders -Server $Server))
+        }
+    
         # Verify if using UNC drive letter: match only \\server\c$
         $Regex = "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z]\$" 
         # We need to take a different approach to building $AllPaths if this is the content object's source path
@@ -178,24 +221,13 @@ Function Get-AllPaths {
             $LocalPath = $LocalPath -replace "\$",":"
             # There was a need to capitalise the driver letter but I can't remember why now
             $LocalPath = [regex]::replace($LocalPath, "^[a-z]:\\", { $args[0].Value.ToUpper() })
-            # Get share's server name
-            $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)"
-            $RegexMatch = [regex]::Match($Path, $Regex)
-            $Server = $RegexMatch.Groups[1].Value
-    
-            # I'm not sure if this can be cached in any way, maybe?
-            $AllShares = Get-AllSharedFolders -Server $Server
-    
-            $FQDN = [System.Net.Dns]::GetHostByName(("$($Server)")).HostName
-            $NetBIOS = $FQDN.Split(".")[0]
-            $IP = (((Test-Connection $Server -Count 1 -ErrorAction SilentlyContinue)).IPV4Address).IPAddressToString
     
             # Start building $AllPaths with what we already know
             $AllPaths.Add($LocalPath, $NetBIOS)
             
             # Now determine all possible paths
-            If ($AllShares.count -ge 1) {
-                ForEach ($Share in $AllShares.GetEnumerator()) {
+            If ($Cache.$Server.count -ge 1) {
+                ForEach ($Share in $Cache.$Server.GetEnumerator()) {
                     If($LocalPath.StartsWith($Share.Value, "CurrentCultureIgnoreCase")) {
                         $AllPathsArr = @()
                         $AllPathsArr += $LocalPath.replace($Share.Value, "\\$($FQDN)\$($Share.Name)")
@@ -204,10 +236,12 @@ Function Get-AllPaths {
                         $AllPathsArr += (("\\" + $FQDN + "\" + $LocalPath) -replace ":", "$")
                         $AllPathsArr += (("\\" + $NetBIOS + "\" + $LocalPath) -replace ":", "$")
                         $AllPathsArr += (("\\" + $IP + "\" + $LocalPath) -replace ":", "$")
-                    }
-                    ForEach ($item in $AllPathsArr) {
-                        If ($AllPaths.ContainsKey($item) -eq $false) {
-                            $AllPaths.Add($item, $NetBIOS)
+                        # This is so we can avoid error messages about dictionary already containing key
+                        # Dupes can occur if there are multiple shares within the path
+                        ForEach ($item in $AllPathsArr) {
+                            If ($AllPaths.ContainsKey($item) -eq $false) {
+                                $AllPaths.Add($item, $NetBIOS)
+                            }
                         }
                     }
                 }
@@ -217,76 +251,36 @@ Function Get-AllPaths {
             }
         }
         Else {
-            # Grab server and share: match only \\servers\share from \\server\share\folder\folder
-            $Regex = "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]*" 
-            $RegexMatch = [regex]::Match($Path,$Regex)
-            If ($Cache.ContainsKey($RegexMatch.Groups[0].Value) -eq $false) {
-                $LocalPath = Get-LocalPathFromUNCShare -Share $Path
-                $Cache.Add($RegexMatch.Groups[0].Value, $LocalPath)
-            }
-            Else {
-                $LocalPath = $Cache.($RegexMatch.Groups[0].Value)
-            }
     
-            # Grab server, share and remainder of path in to 4 groups: group 0 (whole match) "\\server\share\folder\folder", group 1 = "server", group 2 = "share", group 3 = "folder\folder"
-            $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~\\!@#$%^&(){}\'._-]+)*" 
-            $RegexMatch = [regex]::Match($Path, $Regex)
-            switch ($true) {
-                ($RegexMatch.Groups[1].Success -eq $true) {
-                    $Server = $RegexMatch.Groups[1].Value
-                }
-                ($RegexMatch.Groups[2].Success -eq $true) {
-                    $ShareName = $RegexMatch.Groups[2].Value
-                }
-                ($RegexMatch.Groups[3].Success -eq $true) {
-                    $ShareNameRemainder = "\" + $RegexMatch.Groups[3].Value
-                }
-                default { # do some sort of error handling with this later? prob not necessary as .IsUnc from its caller probably qualifiees it already?
-                    $Server = ""
-                    $ShareName = ""
-                    $ShareNameRemainder = ""
-                }
+            If ($Cache.$Server.ContainsKey($ShareName)) {
+                $LocalPath = $Cache.$Server.$ShareName
             }
+            # But, what to do if it isn't? ^
     
-            $FQDN = [System.Net.Dns]::GetHostByName(("$($Server)")).HostName
-            $NetBIOS = $FQDN.Split(".")[0]
-            $IP = (((Test-Connection $Server -Count 1 -ErrorAction SilentlyContinue)).IPV4Address).IPAddressToString
-            
             $AllPathsArr = @()
-            $AllPathsArr = "\\$($FQDN)\$($ShareName)$($ShareNameRemainder)"
-            $AllPathsArr = "\\$($NetBIOS)\$($ShareName)$($ShareNameRemainder)"
-            $AllPathsArr = "\\$($IP)\$($ShareName)$($ShareNameRemainder)"
-            $AllPathsArr = ("\\$($FQDN)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
-            $AllPathsArr = ("\\$($NetBIOS)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
-            $AllPathsArr = ("\\$($IP)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
-            $AllPathsArr = "$($LocalPath)$($ShareNameRemainder)"
-
+            $AllPathsArr += "\\$($FQDN)\$($ShareName)$($ShareNameRemainder)"
+            $AllPathsArr += "\\$($NetBIOS)\$($ShareName)$($ShareNameRemainder)"
+            $AllPathsArr += "\\$($IP)\$($ShareName)$($ShareNameRemainder)"
+            $AllPathsArr += ("\\$($FQDN)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
+            $AllPathsArr += ("\\$($NetBIOS)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
+            $AllPathsArr += ("\\$($IP)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
+            $AllPathsArr += "$($LocalPath)$($ShareNameRemainder)"
+    
             ForEach ($item in $AllPathsArr) {
                 If ($AllPaths.ContainsKey($item) -eq $false) {
                     $AllPaths.Add($item, $NetBIOS)
                 }
             }
     
-            ForEach ($item in $AllPaths.GetEnumerator()) {
-                If ([bool]([System.Uri]$item.Name).IsUnc -eq $true) { # Don't add the local path to the cache
-                    $Regex = "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]*" # grab Server + Share, e.g. \\server\share
-                    $RegexMatch = [regex]::Match($item.Name,$Regex)
-                    $Regex = "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z]\$" # grab Server + drive share, e.g. \\server\c$
-                    If (($Cache.ContainsKey($RegexMatch.Groups[0].Value) -eq $false) -And ($RegexMatch.Groups[0].Value -notmatch $Regex)) {
-                        $Cache.Add($RegexMatch.Groups[0].Value,$LocalPath)
-                    }
-                }
-            }
         }
     }
     Else {
-        $AllPaths = @{ $Path = $env:COMPUTERNAME }
+        $AllPaths.Add($Path, $env:COMPUTERNAME)
     }
     
     $result = @()
     $result += $Cache
     $result += $AllPaths
-
     return $result
 }
 
@@ -297,7 +291,7 @@ Function Get-LocalPathFromUNCShare {
         [string]$Share
     )
 
-    $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)"
+    $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)"
     $RegexMatch = [regex]::Match($Share, $Regex)
     $Server = $RegexMatch.Groups[1].Value
     $ShareName = $RegexMatch.Groups[2].Value
@@ -395,6 +389,8 @@ $AllFolders = $AllFolders | Sort
 ForEach ($Folder in $AllFolders) { # For every folder
 
     ForEach ($ContentObject in $AllContentObjects) { # For every content object
+
+        # Whatever you do, ignore case!
 
         If ([bool]([System.Uri]$SourcesLocation).IsUnc -eq $true) {
 
