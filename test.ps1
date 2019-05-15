@@ -138,10 +138,27 @@ Function Get-LocalPathFromUNCShare {
     return ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path="
 }
 
+Function Get-AllSharedFolders {
+    Param([String]$Server)
+    # Get all shares on server
+    $Shares = Invoke-Command -ComputerName $Server -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
+    # Iterate through them using hidden PSObject property because $Shares is PSCustomObject
+    $AllShares = @{}
+    $Shares.PSObject.Properties | Where-Object { $_.TypeNameOfValue -eq "Deserialized.System.String[]" } | ForEach-Object {
+        # At this point it's an array
+        ForEach ($item in $_) {
+            $AllSharesShareName = (($item.Value -match "ShareName") -replace "ShareName=")[0] # There's only ever 1 element in the array
+            $AllSharesPath = (($item.Value -match "Path") -replace "Path=")[0] # There's only ever 1 element in the array
+            $AllShares += @{ $AllSharesShareName = $AllSharesPath }
+        } 
+    }
+    return $AllShares
+}
+
 Set-Location ACC:
 
-#$Commands = "Get-CMPackage", "Get-CMDriverPackage", "Get-CMBootImage", "Get-CMOperatingSystemImage", "Get-CMOperatingSystemInstaller", "Get-CMSoftwareUpdateDeploymentPackage", "Get-CMApplication", "Get-CMDriver"
-$Commands = "Get-CMApplication"
+$Commands = "Get-CMPackage", "Get-CMDriverPackage", "Get-CMBootImage", "Get-CMOperatingSystemImage", "Get-CMOperatingSystemInstaller", "Get-CMSoftwareUpdateDeploymentPackage", "Get-CMApplication", "Get-CMDriver"
+#$Commands = "Get-CMApplication"
 $AllContent = @()
 $ShareCache = @{}
 ForEach ($Command in $Commands) {

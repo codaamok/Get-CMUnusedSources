@@ -19,6 +19,11 @@
     Contact:
     Created:
     Updated:
+    Thanks to:
+        Cody
+        Chris Kibble
+        Chris Dent
+        PsychoData (the regex mancer)
     
     Version history:
     1
@@ -52,7 +57,7 @@ Param (
         Position = 0
     )]
     [ValidateScript({
-        If (!([System.IO.Directory]::Exists($_)) {
+        If (!([System.IO.Directory]::Exists($_))) {
             Throw "Invalid path or access denied"
         } ElseIf (!($_ | Test-Path -PathType Container)) {
             Throw "Value must be a directory, not a file"
@@ -345,9 +350,6 @@ Function Set-CMDrive {
     Set-Location "$($SiteCode):" | Out-Null
 }
 
-$OriginalPath = (Get-Location).Path
-Set-CMDrive
-
 [System.Collections.ArrayList]$AllContentObjects = @()
 $Commands = @()
 
@@ -378,28 +380,95 @@ switch ($true) {
     }
 }
 
-$AllContentObjects = Get-CMContent -Commands $Commands
-
+Write-Debug "Getting folders"
 # Must be a beter way than this
 [System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
 # Add what the user gave us
 $AllFolders.Add($SourcesLocation) 
 $AllFolders = $AllFolders | Sort
 
-ForEach ($Folder in $AllFolders) { # For every folder
+$OriginalPath = (Get-Location).Path
+Set-CMDrive
 
-    ForEach ($ContentObject in $AllContentObjects) { # For every content object
+Write-Debug "Getting content"
+$AllContentObjects = Get-CMContent -Commands $Commands
 
-        # Whatever you do, ignore case!
+$Result = @()
 
-        If ([bool]([System.Uri]$SourcesLocation).IsUnc -eq $true) {
+ForEach ($Folder in $AllFolders) {
 
-        } Else {
+    #Write-Progress -Id 1 -Activity "Looping through folders" -Status $Folder -PercentComplete ($AllFolders.IndexOf($Folder) / $AllFolders.count * 100)
+    
+    $obj = New-Object PSCustomObject
+    Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $Folder
+
+    $UsedBy = @()
+    $IntermediatePath = $false
+    $ToSkip = $false
+    #$NotUsed = $false
+
+    If ($Folder.StartsWith($ToSkip)) {
+        # Should probably rename $NotUsed to something more appropriate to truely reflect it's meaning
+        # This is here so we don't walk through completely unused folder + sub folders
+        # Unused folders + sub folders are learnt for each loop of a new folder structure and thus each loop of all content objects
+        $NotUsed = $true
+    }
+    Else {
+        ForEach ($ContentObject in $AllContentObjects) {
+            
+            # Whatever you do, ignore case!
+
+            switch($true) {
+                (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
+                    # Package is local host
+                    # Heavily assumes this scripts runs from primary site
+                    $UsedBy += $ContentObject
+                    break
+                }
+                ($ContentObject.AllPaths.ContainsKey($Folder) -eq $true) {
+                    # By default the ContainsKey method ignores case
+                    $UsedBy += $ContentObject
+                    break
+                }
+                (($ContentObject.AllPaths.Keys -match [Regex]::Escape($Folder)).Count -gt 0) {
+                    # If any of the content object paths start with $Folder
+                    $IntermediatePath = $true
+                    break
+                }
+                ($ContentObject.AllPaths.Keys.Where{$Folder.StartsWith($_, "CurrentCultureIgnoreCase")}.Count -gt 0) {
+                    # If $Folder starts wtih any of the content object paths
+                    $IntermediatePath = $true
+                    break
+                }
+                default {
+                    $ToSkip = $Folder
+                    $NotUsed = $true
+                }
+            }
 
         }
 
-    }
+        switch ($true) {
+            ($UsedBy.count -gt 0) {
+                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy.Name) -join ', ')
+                ForEach ($item in $UsedBy) {
+                   $AllContentObjects.Remove($item) # Stop me walking through content objects that I've already found 
+                }
+                break
+            }
+            ($IntermediatePath -eq $true) {
+                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
+                break
+            }
+            ($NotUsed -eq $true) {
+                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
+                break
+            }
+        }
+    
+        $Result += $obj
 
+    }
 }
 
 Set-Location $OriginalPath
