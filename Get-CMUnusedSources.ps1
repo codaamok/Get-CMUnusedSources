@@ -408,7 +408,7 @@ ForEach ($Folder in $AllFolders) {
     #$NotUsed = $false
 
     If ($Folder.StartsWith($ToSkip)) {
-        # Should probably rename $NotUsed to something more appropriate to truely reflect it's meaning
+        # Should probably rename $NotUsed to something more appropriate to truely reflect its meaning
         # This is here so we don't walk through completely unused folder + sub folders
         # Unused folders + sub folders are learnt for each loop of a new folder structure and thus each loop of all content objects
         $NotUsed = $true
