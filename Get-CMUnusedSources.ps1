@@ -30,6 +30,7 @@
 
     TODO:
         - Comment regex
+        - Dynamic write progress (no longer possible with new .net enumeratedirectories though :())
         - Dashimo?
         - How to handle access denied on folders?
         - Get-AllLocalPath (or whatever I called it) and Get-AllSharedFolders are similar, get one to use the other or just elimnate one?
@@ -382,10 +383,10 @@ switch ($true) {
 
 Write-Debug "Getting folders"
 # Must be a beter way than this
-[System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
+#[System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
 # Add what the user gave us
-$AllFolders.Add($SourcesLocation) 
-$AllFolders = $AllFolders | Sort
+#$AllFolders.Add($SourcesLocation) 
+#$AllFolders = $AllFolders | Sort
 
 $OriginalPath = (Get-Location).Path
 Set-CMDrive
@@ -395,7 +396,9 @@ $AllContentObjects = Get-CMContent -Commands $Commands
 
 $Result = @()
 
-ForEach ($Folder in $AllFolders) {
+[System.IO.Directory]::EnumerateDirectories($SourcesLocation, "*", "AllDirectories") | ForEach-Object {
+
+    $Folder = $_
 
     #Write-Progress -Id 1 -Activity "Looping through folders" -Status $Folder -PercentComplete ($AllFolders.IndexOf($Folder) / $AllFolders.count * 100)
     
@@ -405,7 +408,7 @@ ForEach ($Folder in $AllFolders) {
     $UsedBy = @()
     $IntermediatePath = $false
     $ToSkip = $false
-    #$NotUsed = $false
+    $NotUsed = $false
 
     If ($Folder.StartsWith($ToSkip)) {
         # Should probably rename $NotUsed to something more appropriate to truely reflect its meaning
@@ -451,9 +454,9 @@ ForEach ($Folder in $AllFolders) {
         switch ($true) {
             ($UsedBy.count -gt 0) {
                 Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy.Name) -join ', ')
-                ForEach ($item in $UsedBy) {
-                   $AllContentObjects.Remove($item) # Stop me walking through content objects that I've already found 
-                }
+                #ForEach ($item in $UsedBy) {
+                #   $AllContentObjects.Remove($item) # Stop me walking through content objects that I've already found 
+                #}
                 break
             }
             ($IntermediatePath -eq $true) {
