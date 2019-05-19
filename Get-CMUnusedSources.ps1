@@ -430,7 +430,17 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
         $NotUsed = $true
     }
     Else {
+
+        [int]$interval2 = $AllContentObjects.count * 0.25
+        $counter2 = 0
+
         ForEach ($ContentObject in $AllContentObjects) {
+
+            If ($counter2 % $interval2 -eq 0) {
+                Write-Progress -Id 3 -Activity "Looping through content objects" -PercentComplete ($counter2 / $AllContentObjects.count * 100) -ParentId 2
+            }
+
+            $counter2++
             
             # Whatever you do, ignore case!
 
