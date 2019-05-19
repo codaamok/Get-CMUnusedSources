@@ -381,27 +381,40 @@ switch ($true) {
     }
 }
 
-Write-Debug "Getting folders"
+#Write-Debug "Getting folders"
 # Must be a beter way than this
 #[System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
 # Add what the user gave us
 #$AllFolders.Add($SourcesLocation) 
 #$AllFolders = $AllFolders | Sort
+If ($SourcesLocation -match "^[a-zA-Z]:$") { $SourcesLocation = $SourcesLocation + "\" }
 
 $OriginalPath = (Get-Location).Path
 Set-CMDrive
 
-Write-Debug "Getting content"
+#Write-Debug "Getting content"
+Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status "Getting all CM content objects"
 $AllContentObjects = Get-CMContent -Commands $Commands
 
 $Result = @()
 
+Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status "Calculating number of folders"
+$NumOfFolders = ([System.IO.Directory]::EnumerateDirectories($SourcesLocation, "*", "AllDirectories") | Measure-Object).count
+# Forcing int data type because double/float for benefit of modulo write-progoress
+[int]$interval = $NumOfFolders * 0.01
+$counter = 0
+
+Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status "Determinig unused folders"
 [System.IO.Directory]::EnumerateDirectories($SourcesLocation, "*", "AllDirectories") | ForEach-Object {
 
+    If (($counter % $interval) -eq 0) { 
+        [int]$Percentage = ($counter / $NumOfFolders * 100)
+        Write-Progress -Id 2 -Activity "Looping through folders in $($SourcesLocation)" -PercentComplete $Percentage -Status "$($Percentage)% complete" -ParentId 1
+    }
+    
+    $counter++
     $Folder = $_
 
-    #Write-Progress -Id 1 -Activity "Looping through folders" -Status $Folder -PercentComplete ($AllFolders.IndexOf($Folder) / $AllFolders.count * 100)
-    
     $obj = New-Object PSCustomObject
     Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $Folder
 
@@ -454,6 +467,7 @@ $Result = @()
         switch ($true) {
             ($UsedBy.count -gt 0) {
                 Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy.Name) -join ', ')
+                # Commented out the below because if we move a found content object, it removes other relevant paths associated with it being identified as an intermediate path
                 #ForEach ($item in $UsedBy) {
                 #   $AllContentObjects.Remove($item) # Stop me walking through content objects that I've already found 
                 #}
