@@ -37,6 +37,8 @@
         - Test folder structures e.g. F:\Sources\More\Folders\Applications 
         - Test if a content object source path has multiple shares that are applicable to it, e.g. Applications$ and Packages$ point to F:\Sources or something like that
         - Strip trailing \ from $AllPaths
+        - optionally show progress, faster without
+        - Adjust to run from any machine
         
     Problems:
         - Have I stupidly assumed share name is same as folder name on disk???
