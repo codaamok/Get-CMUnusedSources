@@ -30,13 +30,9 @@
 
     TODO:
         - Comment regex
-        - Dynamic write progress (no longer possible with new .net enumeratedirectories though :())
         - Dashimo?
-        - How to handle access denied on folders?
         - Get-AllLocalPath (or whatever I called it) and Get-AllSharedFolders are similar, get one to use the other or just elimnate one?
-        - Test folder structures e.g. F:\Sources\More\Folders\Applications 
         - Test if a content object source path has multiple shares that are applicable to it, e.g. Applications$ and Packages$ point to F:\Sources or something like that
-        - Strip trailing \ from $AllPaths
         - optionally show progress, faster without
         - Adjust to run from any machine
         
