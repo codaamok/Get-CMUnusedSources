@@ -176,7 +176,11 @@ Function Get-AllPaths {
 
     If ([bool]([System.Uri]$Path).IsUnc -eq $true) {
         
-        # Grab server, share and remainder of path in to 4 groups: group 0 (whole match) "\\server\share\folder\folder", group 1 = "server", group 2 = "share", group 3 = "folder\folder"
+        ############################################
+        # Grab server, share and remainder of path#in to 4 groups:
+        # group 0 (whole match) "\\server\share\folder\folder", group 1 = "server", group 2 = "share", group 3 = "folder\folder"
+        ############################################
+
         $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)\\([a-zA-Z0-9`~\\!@#$%^&(){}\'._ -]+)*" 
         $RegexMatch = [regex]::Match($Path, $Regex)
         switch ($true) {
@@ -196,6 +200,10 @@ Function Get-AllPaths {
             }
         }
 
+        ############################################
+        # Determine FQDN, IP and NetBIOS
+        ############################################
+
         If ($Server -as [IPAddress]) {
             $FQDN = [System.Net.Dns]::GetHostEntry("$($Server)").HostName
             $IP = $Server
@@ -206,20 +214,31 @@ Function Get-AllPaths {
         }
         $NetBIOS = $FQDN.Split(".")[0]
         
+        ############################################
+        # Update the cache of shared folders and their local paths
+        ############################################
     
         If ($Cache.ContainsKey($Server)) {
             # Already have this server's shares cached
         }
         Else {
             # Do not yet have this server's shares cached
-            $Cache.Add($NetBIOS, (Get-AllSharedFolders -Server $Server))
-            $Cache.Add($FQDN, (Get-AllSharedFolders -Server $Server))
-            $Cache.Add($IP, (Get-AllSharedFolders -Server $Server))
+            # $AllSharedFolders is null if couldn't connect to serverr to get all shared folders
+            $NetBIOS,$FQDN,$IP | ForEach-Object {
+                $AllSharedFolders = Get-AllSharedFolders -Server $Server
+                If ($AllSharedFolders -ne $null) {
+                    $Cache.Add($_, $AllSharedFolders)
+                }
+            }
         }
+
+        ############################################
+        # Build the AllPaths property
+        ############################################
     
-        # Verify if using UNC drive letter: match only \\server\c$
+        # Verify if the path is using drive letter, e.g. match only \\server\c$
+        # A different approach is taken to determine AllPaths if the path uses driver letter vs not a driver letter
         $Regex = "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z]\$" 
-        # We need to take a different approach to building $AllPaths if this is the content object's source path
         If ($Path -match $Regex) {
             # Convert UNC path to local path
             $LocalPath = $Path -replace "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\" 
@@ -256,21 +275,21 @@ Function Get-AllPaths {
             }
         }
         Else {
-    
+
+            $AllPathsArr = @()
+
             If ($Cache.$Server.ContainsKey($ShareName)) {
                 $LocalPath = $Cache.$Server.$ShareName
+                $AllPathsArr += ("\\$($FQDN)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
+                $AllPathsArr += ("\\$($NetBIOS)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
+                $AllPathsArr += ("\\$($IP)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
+                $AllPathsArr += "$($LocalPath)$($ShareNameRemainder)"
             }
-            # But, what to do if it isn't? ^
-    
-            $AllPathsArr = @()
+
             $AllPathsArr += "\\$($FQDN)\$($ShareName)$($ShareNameRemainder)"
             $AllPathsArr += "\\$($NetBIOS)\$($ShareName)$($ShareNameRemainder)"
             $AllPathsArr += "\\$($IP)\$($ShareName)$($ShareNameRemainder)"
-            $AllPathsArr += ("\\$($FQDN)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
-            $AllPathsArr += ("\\$($NetBIOS)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
-            $AllPathsArr += ("\\$($IP)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
-            $AllPathsArr += "$($LocalPath)$($ShareNameRemainder)"
-    
+
             ForEach ($item in $AllPathsArr) {
                 If ($AllPaths.ContainsKey($item) -eq $false) {
                     $AllPaths.Add($item, $NetBIOS)
@@ -289,6 +308,7 @@ Function Get-AllPaths {
     return $result
 }
 
+# No references to this function anymore
 Function Get-LocalPathFromUNCShare {
     param (
         [ValidatePattern("\\\\(.+)(\\).+")]
@@ -309,16 +329,23 @@ Function Get-LocalPathFromUNCShare {
 Function Get-AllSharedFolders {
     Param([String]$Server)
     # Get all shares on server
-    $Shares = Invoke-Command -ComputerName $Server -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
+    try {
+        $Shares = Invoke-Command -ComputerName $Server -ErrorAction SilentlyContinue -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
+    }
+    catch {
+        $Shares = $null
+    }
     # Iterate through them using hidden PSObject property because $Shares is PSCustomObject
     $AllShares = @{}
-    $Shares.PSObject.Properties | Where-Object { $_.TypeNameOfValue -eq "Deserialized.System.String[]" } | ForEach-Object {
-        # At this point it's an array
-        ForEach ($item in $_) {
-            $AllSharesShareName = (($item.Value -match "ShareName") -replace "ShareName=")[0] # There's only ever 1 element in the array
-            $AllSharesPath = (($item.Value -match "Path") -replace "Path=")[0] # There's only ever 1 element in the array
-            $AllShares += @{ $AllSharesShareName = $AllSharesPath }
-        } 
+    If ($Shares -ne $null) {
+        $Shares.PSObject.Properties | Where-Object { $_.TypeNameOfValue -eq "Deserialized.System.String[]" } | ForEach-Object {
+            # At this point it's an array
+            ForEach ($item in $_) {
+                $AllSharesShareName = (($item.Value -match "ShareName") -replace "ShareName=")[0] # There's only ever 1 element in the array
+                $AllSharesPath = (($item.Value -match "Path") -replace "Path=")[0] # There's only ever 1 element in the array
+                $AllShares += @{ $AllSharesShareName = $AllSharesPath }
+            }
+        }
     }
     return $AllShares
 }
@@ -341,8 +368,10 @@ Function Set-CMDrive {
             $SiteCode = $PSDrive.Name
         }
     }
-    $configManagerCmdLetpath = Join-Path $(Split-Path $env:SMS_ADMIN_UI_PATH) "ConfigurationManager.psd1"
-    Import-Module $configManagerCmdLetpath -Force
+    # Alternate method below proposed by Chris K
+    #$configManagerCmdLetpath = Join-Path $(Split-Path $env:SMS_ADMIN_UI_PATH) "ConfigurationManager.psd1"
+    #Import-Module $configManagerCmdLetpath -Force
+    Import-Module $env:SMS_ADMIN_UI_PATH\..\ConfigurationManager.psd1
     #If the PS drive doesn't exist then try to create it.
     If (! (Test-Path "$($SiteCode):")) {
         New-PSDrive -Name $SiteCode -PSProvider CMSite -Root "." | Out-Null
