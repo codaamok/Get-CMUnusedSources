@@ -1,17 +1,11 @@
 <#
 .SYNOPSIS
-    Clear out your Configuration Manager clutter of no longer used source files on disk!
 
 .DESCRIPTION
-    This scripts allows you to identify folders that are not referenced by any content objects in your Configuration Manager environment.
 
 .INPUTS
-	Provide the script the absolute path to the "root" of your sources folder/drive
 
 .EXAMPLE
-	.\Get-AppPackageCleanUp.ps1 -PackageType Packages -SiteServer YOURSITESERVER
-
-	.\Get-AppPackageCleanUp.ps1 -PackageType Packages -SiteServer YOURSITESERVER -ExportCSV True
 
 .NOTES
     FileName:
@@ -104,10 +98,9 @@ Param (
     [switch]$DeploymentPackages
 )
 
-# Invaluable resource for getting all source locations: https://www.verboon.info/2013/07/configmgr-2012-script-to-retrieve-source-path-locations/
-
 Function Get-CMContent {
     Param($Commands)
+    # Invaluable resource for getting all source locations: https://www.verboon.info/2013/07/configmgr-2012-script-to-retrieve-source-path-locations/
     $AllContent = @()
     $ShareCache = @{}
     ForEach ($Command in $Commands) {
@@ -162,7 +155,6 @@ Function Get-CMContent {
             }
         }
     }
-    #$ShareCache
     return $AllContent
 }
 
@@ -308,24 +300,6 @@ Function Get-AllPaths {
     return $result
 }
 
-# No references to this function anymore
-Function Get-LocalPathFromUNCShare {
-    param (
-        [ValidatePattern("\\\\(.+)(\\).+")]
-        [Parameter(Mandatory=$true)]
-        [string]$Share
-    )
-
-    $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)"
-    $RegexMatch = [regex]::Match($Share, $Regex)
-    $Server = $RegexMatch.Groups[1].Value
-    $ShareName = $RegexMatch.Groups[2].Value
-    
-    $Shares = Invoke-Command -ComputerName $Server -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
-
-    return ($Shares.$ShareName | Where-Object {$_ -match 'Path'}) -replace "Path="
-}
-
 Function Get-AllSharedFolders {
     Param([String]$Server)
     # Get all shares on server
@@ -438,6 +412,7 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
     If (($counter % $interval) -eq 0) { 
         [int]$Percentage = ($counter / $NumOfFolders * 100)
         Write-Progress -Id 2 -Activity "Looping through folders in $($SourcesLocation)" -PercentComplete $Percentage -Status "$($Percentage)% complete" -ParentId 1
+        Write-Host "$(Get-Date): $($Percentage)%"
     }
     
     $counter++
