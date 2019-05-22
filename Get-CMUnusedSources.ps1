@@ -32,6 +32,8 @@
         - As a result of the last machine, remove need for UAC and add mandatory parameters specifying servername + site code?
         
     Problems:
+        - What if a content object source path is \\server\share ?
+        - What if content object has no path specified?
         - Have I stupidly assumed share name is same as folder name on disk???
         - [RESOLVED - untested] Some content objects are absolute references to files, e.g. BootImage and OperatingSystemImage
         - [RESOLVED] Need to add local path to $AllPaths surely?
@@ -114,23 +116,37 @@ Function Get-CMContent {
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)"
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($item.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath ($DeploymentType.Installer.Contents.Content.Location).TrimEnd('\')
-                        $GetAllPathsResult = Get-AllPaths -Path $obj.SourcePath -Cache $ShareCache
-                        $ShareCache = $GetAllPathsResult[0]
-                        $AllPaths = $GetAllPathsResult[1]
+                        If ($DeploymentType.Installer.Contents.Content.Location -ne $null) {
+                            $SourcePath = ($DeploymentType.Installer.Contents.Content.Location).TrimEnd('\')
+                            $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
+                            $ShareCache = $GetAllPathsResult[0]
+                            $AllPaths = $GetAllPathsResult[1]
+                        }
+                        Else {
+                            $SourcePath = $null
+                            $AllPaths = $null
+                        }
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $AllPaths
                         $AllContent += $obj
                     }
                 }
-                "Get-CMDriver" {
+                "Get-CMDriver" { # I don't actually think it's possible for a driver to not have source path set
                     $obj = New-Object PSObject
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.CI_ID
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.LocalizedDisplayName
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath ($item.ContentSourcePath).TrimEnd('\')
-                    $GetAllPathsResult = Get-AllPaths -Path $obj.SourcePath -Cache $ShareCache
-                    $ShareCache = $GetAllPathsResult[0]
-                    $AllPaths = $GetAllPathsResult[1]
+                    If ($item.ContentSourcePath -ne $null) {
+                        $SourcePath = ($item.ContentSourcePath).TrimEnd('\')
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
+                        $ShareCache = $GetAllPathsResult[0]
+                        $AllPaths = $GetAllPathsResult[1]
+                    }
+                    Else {
+                        $SourcePath = $null
+                        $AllPaths = $null
+                    }
+                    Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $AllPaths
                     $AllContent += $obj
                 }
@@ -139,16 +155,23 @@ Function Get-CMContent {
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.PackageId
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.Name
-                    # OS images and boot iamges are absolute paths to files
-                    If ("OperatingSystemImage","BootImage" -contains $obj.ContentType) {
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath (Split-Path $item.PkgSourcePath).TrimEnd('\')
+                    If ($item.PkgSourcePath -ne $null) {
+                        # OS images and boot iamges are absolute paths to files
+                        If ("OperatingSystemImage","BootImage" -contains $obj.ContentType) {
+                            $SourcePath = (Split-Path $item.PkgSourcePath).TrimEnd('\')
+                        }
+                        Else {
+                            $SourcePath = ($item.PkgSourcePath).TrimEnd('\')
+                        }
+                        $GetAllPathsResult = Get-AllPaths -Path $obj.SourcePath -Cache $ShareCache
+                        $ShareCache = $GetAllPathsResult[0]
+                        $AllPaths = $GetAllPathsResult[1]
                     }
                     Else {
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath ($item.PkgSourcePath).TrimEnd('\')
+                        $SourcePath = $null
+                        $AllPaths = $null
                     }
-                    $GetAllPathsResult = Get-AllPaths -Path $obj.SourcePath -Cache $ShareCache
-                    $ShareCache = $GetAllPathsResult[0]
-                    $AllPaths = $GetAllPathsResult[1]
+                    Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $AllPaths
                     $AllContent += $obj
                 }   
@@ -448,6 +471,9 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
             # Whatever you do, ignore case!
 
             switch($true) {
+                ($ContentObject.SourcePath -eq $null) {
+                    break
+                }
                 (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
                     # Package is local host
                     # Heavily assumes this scripts runs from primary site
