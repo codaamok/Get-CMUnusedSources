@@ -39,7 +39,6 @@
         - [RESOLVED] Need to add local path to $AllPaths surely?
         - [RESOLVED - untested] Adding server property to $AllPaths for the below purpose. : If content object SourcePath is e.g. \\FILESERVER\SCCMSources\Applications\7zip\x64 and local path resolves to F:\SCCMSources\Applications\7zip\x64 and user gigves -SourcesLocations as F:\ and F:\Applications\7zip\x64 exists on primary site server (where script should be running from) this will produce a false positive
 #>
-#Requires -RunAsAdministrator
 [cmdletbinding(DefaultParameterSetName='1')]
 Param (
     [Parameter(
