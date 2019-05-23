@@ -141,7 +141,7 @@ Function Get-CMContent {
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($item.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
                         If ($DeploymentType.Installer.Contents.Content.Location -ne $null) {
                             $SourcePath = ($DeploymentType.Installer.Contents.Content.Location).TrimEnd('\')
-                            $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
+                            $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
                             $ShareCache = $GetAllPathsResult[0]
                             $AllPaths = $GetAllPathsResult[1]
                         }
@@ -161,7 +161,7 @@ Function Get-CMContent {
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.LocalizedDisplayName
                     If ($item.ContentSourcePath -ne $null) {
                         $SourcePath = ($item.ContentSourcePath).TrimEnd('\')
-                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
                         $ShareCache = $GetAllPathsResult[0]
                         $AllPaths = $GetAllPathsResult[1]
                     }
@@ -186,7 +186,7 @@ Function Get-CMContent {
                         Else {
                             $SourcePath = ($item.PkgSourcePath).TrimEnd('\')
                         }
-                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
                         $ShareCache = $GetAllPathsResult[0]
                         $AllPaths = $GetAllPathsResult[1]
                     }
@@ -207,8 +207,7 @@ Function Get-CMContent {
 Function Get-AllPaths {
     param (
         [string]$Path,
-        [hashtable]$Cache,
-        [string]$SCCMServer
+        [hashtable]$Cache
     )
 
     $AllPaths = @{}
@@ -338,7 +337,7 @@ Function Get-AllPaths {
         }
     }
     Else {
-        $AllPaths.Add($Path, $SCCMServer)
+        $AllPaths.Add($Path, $env:COMPUTERNAME)
     }
     
     $result = @()
