@@ -63,6 +63,18 @@ Param (
     })]
     [string]$SourcesLocation,
     [Parameter(
+        ParameterSetName='1',
+        Mandatory=$true, 
+        Position = 1
+    )]
+    [Parameter(
+        ParameterSetName='2',
+        Mandatory=$true, 
+        Position = 1
+    )]
+    [ValidatePattern('^[a-zA-Z0-9]{3}$')]
+    [string]$SiteCode,
+    [Parameter(
         ParameterSetName='1'
     )]
     [switch]$All = $true,
@@ -163,7 +175,7 @@ Function Get-CMContent {
                         Else {
                             $SourcePath = ($item.PkgSourcePath).TrimEnd('\')
                         }
-                        $GetAllPathsResult = Get-AllPaths -Path $obj.SourcePath -Cache $ShareCache
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
                         $ShareCache = $GetAllPathsResult[0]
                         $AllPaths = $GetAllPathsResult[1]
                     }
@@ -348,26 +360,6 @@ Function Get-AllSharedFolders {
 }
 
 Function Set-CMDrive {
-    #Try getting the site code from the client installed on this system.
-    If (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Identification" "Site Code"){
-        $SiteCode =  Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Identification" | Select-Object -ExpandProperty "Site Code"
-    } ElseIf (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Mobile Client" "AssignedSiteCode") {
-        $SiteCode =  Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\SMS\Mobile Client" | Select-Object -ExpandProperty "AssignedSiteCode"
-    }
-
-    #If the client isn't installed try looking for the site code based on the PS drives.
-    If (-Not ($SiteCode) ) {
-        #See if a PSDrive exists with the CMSite provider
-        $PSDrive = Get-PSDrive -PSProvider CMSite -ErrorAction SilentlyContinue
-
-        #If PSDrive exists then get the site code from it.
-        If ($PSDrive.Count -eq 1) {
-            $SiteCode = $PSDrive.Name
-        }
-    }
-    # Alternate method below proposed by Chris K
-    #$configManagerCmdLetpath = Join-Path $(Split-Path $env:SMS_ADMIN_UI_PATH) "ConfigurationManager.psd1"
-    #Import-Module $configManagerCmdLetpath -Force
     Import-Module $env:SMS_ADMIN_UI_PATH\..\ConfigurationManager.psd1
     #If the PS drive doesn't exist then try to create it.
     If (! (Test-Path "$($SiteCode):")) {
