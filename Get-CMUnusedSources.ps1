@@ -75,6 +75,17 @@ Param (
     [ValidatePattern('^[a-zA-Z0-9]{3}$')]
     [string]$SiteCode,
     [Parameter(
+        ParameterSetName='1',
+        Mandatory=$true, 
+        Position = 2
+    )]
+    [Parameter(
+        ParameterSetName='2',
+        Mandatory=$true, 
+        Position = 2
+    )]
+    [string]$SCCMServer,
+    [Parameter(
         ParameterSetName='1'
     )]
     [switch]$All = $true,
@@ -130,7 +141,7 @@ Function Get-CMContent {
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($item.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
                         If ($DeploymentType.Installer.Contents.Content.Location -ne $null) {
                             $SourcePath = ($DeploymentType.Installer.Contents.Content.Location).TrimEnd('\')
-                            $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
+                            $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
                             $ShareCache = $GetAllPathsResult[0]
                             $AllPaths = $GetAllPathsResult[1]
                         }
@@ -150,7 +161,7 @@ Function Get-CMContent {
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.LocalizedDisplayName
                     If ($item.ContentSourcePath -ne $null) {
                         $SourcePath = ($item.ContentSourcePath).TrimEnd('\')
-                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
                         $ShareCache = $GetAllPathsResult[0]
                         $AllPaths = $GetAllPathsResult[1]
                     }
@@ -175,7 +186,7 @@ Function Get-CMContent {
                         Else {
                             $SourcePath = ($item.PkgSourcePath).TrimEnd('\')
                         }
-                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
                         $ShareCache = $GetAllPathsResult[0]
                         $AllPaths = $GetAllPathsResult[1]
                     }
@@ -196,7 +207,8 @@ Function Get-CMContent {
 Function Get-AllPaths {
     param (
         [string]$Path,
-        [hashtable]$Cache
+        [hashtable]$Cache,
+        [string]$SCCMServer
     )
 
     $AllPaths = @{}
@@ -326,7 +338,7 @@ Function Get-AllPaths {
         }
     }
     Else {
-        $AllPaths.Add($Path, $env:COMPUTERNAME)
+        $AllPaths.Add($Path, $SCCMServer)
     }
     
     $result = @()
@@ -466,7 +478,7 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
                 ($ContentObject.SourcePath -eq $null) {
                     break
                 }
-                (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
+                (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $SCCMServer)) {
                     # Package is local host
                     # Heavily assumes this scripts runs from primary site
                     $UsedBy += $ContentObject
