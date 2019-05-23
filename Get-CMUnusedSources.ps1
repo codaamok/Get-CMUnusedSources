@@ -408,12 +408,16 @@ switch ($true) {
     }
 }
 
-#Write-Debug "Getting folders"
-# Must be a beter way than this
-#[System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Directory -Recurse -Path $SourcesLocation).FullName
-# Add what the user gave us
-#$AllFolders.Add($SourcesLocation) 
-#$AllFolders = $AllFolders | Sort
+# Ensure $SCCMServer matchs NetBIOS convention as is stored in $env:COMPUTERNAME
+If ($SCCMServer -as [IPAddress]) {
+    $FQDN = [System.Net.Dns]::GetHostEntry("$($SCCMServer)").HostName
+}
+Else {
+    $FQDN = [System.Net.Dns]::GetHostByName($SCCMServer).HostName
+}
+$SCCMServer = $FQDN.Split(".")[0]
+
+# Ensure $SourcesLocation ends with \ if given local drive letter otherwise Directory class and EnumerateDirectories method happily walks through all folders without it
 If ($SourcesLocation -match "^[a-zA-Z]:$") { $SourcesLocation = $SourcesLocation + "\" }
 
 $OriginalPath = (Get-Location).Path
