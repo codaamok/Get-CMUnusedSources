@@ -32,8 +32,9 @@
         - As a result of the last machine, remove need for UAC and add mandatory parameters specifying servername + site code?
         
     Problems:
+        - counter and modulo for write-prgoress is screwed if NumOfFolders isn't at least 100 (if think 100, or at least a big number anyway)
+        - EnumerateDirectories method still sucks with access denied
         - What if a content object source path is \\server\share ?
-        - What if content object has no path specified?
         - Have I stupidly assumed share name is same as folder name on disk???
         - [RESOLVED - untested] Some content objects are absolute references to files, e.g. BootImage and OperatingSystemImage
         - [RESOLVED] Need to add local path to $AllPaths surely?
