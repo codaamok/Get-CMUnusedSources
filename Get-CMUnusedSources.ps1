@@ -348,28 +348,14 @@ Function Get-AllPaths {
 
 Function Get-AllSharedFolders {
     Param([String]$Server)
-    # Get all shares on server
     try {
-        $Shares = Invoke-Command -ComputerName $Server -ErrorAction SilentlyContinue -ScriptBlock { get-itemproperty -path registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\LanmanServer\Shares }
+        $AllShares = Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop | Where-Object {-not [string]::IsNullOrEmpty($_.Path)} | Select Name, Path
     }
     catch {
-        $Shares = $null
-    }
-    # Iterate through them using hidden PSObject property because $Shares is PSCustomObject
-    $AllShares = @{}
-    If ($Shares -ne $null) {
-        $Shares.PSObject.Properties | Where-Object { $_.TypeNameOfValue -eq "Deserialized.System.String[]" } | ForEach-Object {
-            # At this point it's an array
-            ForEach ($item in $_) {
-                $AllSharesShareName = (($item.Value -match "ShareName") -replace "ShareName=")[0] # There's only ever 1 element in the array
-                $AllSharesPath = (($item.Value -match "Path") -replace "Path=")[0] # There's only ever 1 element in the array
-                $AllShares += @{ $AllSharesShareName = $AllSharesPath }
-            }
-        }
+        $AllShares = $null
     }
     return $AllShares
 }
-
 Function Set-CMDrive {
     Import-Module $env:SMS_ADMIN_UI_PATH\..\ConfigurationManager.psd1
     #If the PS drive doesn't exist then try to create it.
