@@ -25,14 +25,12 @@
     TODO:
         - Comment regex
         - Dashimo?
-        - Get-AllLocalPath (or whatever I called it) and Get-AllSharedFolders are similar, get one to use the other or just elimnate one?
         - Test if a content object source path has multiple shares that are applicable to it, e.g. Applications$ and Packages$ point to F:\Sources or something like that
         - optionally show progress, faster without
         - Adjust to run from any machine
         - As a result of the last machine, remove need for UAC and add mandatory parameters specifying servername + site code?
         
     Problems:
-        - counter and modulo for write-prgoress is screwed if NumOfFolders isn't at least 100 (if think 100, or at least a big number anyway)
         - EnumerateDirectories method still sucks with access denied
         - What if a content object source path is \\server\share ?
         - Have I stupidly assumed share name is same as folder name on disk???
@@ -124,7 +122,10 @@ Param (
 )
 
 Function Get-CMContent {
-    Param($Commands)
+    Param(
+        $Commands,
+        [string]$SCCMServer
+    )
     # Invaluable resource for getting all source locations: https://www.verboon.info/2013/07/configmgr-2012-script-to-retrieve-source-path-locations/
     $AllContent = @()
     $ShareCache = @{}
@@ -141,7 +142,7 @@ Function Get-CMContent {
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($item.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
                         If ($DeploymentType.Installer.Contents.Content.Location -ne $null) {
                             $SourcePath = ($DeploymentType.Installer.Contents.Content.Location).TrimEnd('\')
-                            $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
+                            $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
                             $ShareCache = $GetAllPathsResult[0]
                             $AllPaths = $GetAllPathsResult[1]
                         }
@@ -161,7 +162,7 @@ Function Get-CMContent {
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.LocalizedDisplayName
                     If ($item.ContentSourcePath -ne $null) {
                         $SourcePath = ($item.ContentSourcePath).TrimEnd('\')
-                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
                         $ShareCache = $GetAllPathsResult[0]
                         $AllPaths = $GetAllPathsResult[1]
                     }
@@ -186,7 +187,7 @@ Function Get-CMContent {
                         Else {
                             $SourcePath = ($item.PkgSourcePath).TrimEnd('\')
                         }
-                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
                         $ShareCache = $GetAllPathsResult[0]
                         $AllPaths = $GetAllPathsResult[1]
                     }
@@ -207,17 +208,16 @@ Function Get-CMContent {
 Function Get-AllPaths {
     param (
         [string]$Path,
-        [hashtable]$Cache
+        [hashtable]$Cache,
+        [string]$SCCMServer
     )
 
     $AllPaths = @{}
 
     If ([bool]([System.Uri]$Path).IsUnc -eq $true) {
         
-        ############################################
-        # Grab server, share and remainder of path#in to 4 groups:
-        # group 0 (whole match) "\\server\share\folder\folder", group 1 = "server", group 2 = "share", group 3 = "folder\folder"
-        ############################################
+        ##### Grab server, share and remainder of path in to 4 groups:
+        ##### group 0 (whole match) "\\server\share\folder\folder", group 1 = "server", group 2 = "share", group 3 = "folder\folder"
 
         $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)\\([a-zA-Z0-9`~\\!@#$%^&(){}\'._ -]+)*" 
         $RegexMatch = [regex]::Match($Path, $Regex)
@@ -238,9 +238,7 @@ Function Get-AllPaths {
             }
         }
 
-        ############################################
-        # Determine FQDN, IP and NetBIOS
-        ############################################
+        ##### Determine FQDN, IP and NetBIOS
 
         If ($Server -as [IPAddress]) {
             $FQDN = [System.Net.Dns]::GetHostEntry("$($Server)").HostName
@@ -252,9 +250,7 @@ Function Get-AllPaths {
         }
         $NetBIOS = $FQDN.Split(".")[0]
         
-        ############################################
-        # Update the cache of shared folders and their local paths
-        ############################################
+        ##### Update the cache of shared folders and their local paths
     
         If ($Cache.ContainsKey($Server)) {
             # Already have this server's shares cached
@@ -270,9 +266,7 @@ Function Get-AllPaths {
             }
         }
 
-        ############################################
-        # Build the AllPaths property
-        ############################################
+        ##### Build the AllPaths property
     
         # Verify if the path is using drive letter, e.g. match only \\server\c$
         # A different approach is taken to determine AllPaths if the path uses driver letter vs not a driver letter
@@ -337,7 +331,7 @@ Function Get-AllPaths {
         }
     }
     Else {
-        $AllPaths.Add($Path, $env:COMPUTERNAME)
+        $AllPaths.Add($Path, $SCCMServer)
     }
     
     $result = @()
@@ -348,12 +342,20 @@ Function Get-AllPaths {
 
 Function Get-AllSharedFolders {
     Param([String]$Server)
+
+    $AllShares = @{}
+
     try {
-        $AllShares = Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop | Where-Object {-not [string]::IsNullOrEmpty($_.Path)} | Select Name, Path
+        $Shares = Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop | Where-Object {-not [string]::IsNullOrEmpty($_.Path)} | Select Name, Path
     }
     catch {
-        $AllShares = $null
+        $Shares = $null
     }
+
+    ForEach ($Share in $Shares) {
+        $AllShares += @{ $Share.Name = $Share.Path }
+    }
+
     return $AllShares
 }
 Function Set-CMDrive {
@@ -423,7 +425,7 @@ switch ($true) {
     }
 }
 
-# Ensure $SCCMServer matchs NetBIOS convention as is stored in $env:COMPUTERNAME
+# Get NetBIOS of given $SCCMServer parameter so it's similar format as $env:COMPUTERNAME used in body during folder/content object for loop
 If ($SCCMServer -as [IPAddress]) {
     $FQDN = [System.Net.Dns]::GetHostEntry("$($SCCMServer)").HostName
 }
@@ -432,34 +434,35 @@ Else {
 }
 $SCCMServer = $FQDN.Split(".")[0]
 
-# Ensure $SourcesLocation ends with \ if given local drive letter otherwise Directory class and EnumerateDirectories method happily walks through all folders without it
+# Add backslash to $SourcesLocation if given local drive letter and it's missing
+# Otherwise EnumerateDirectories method happily walks through all folders without it and skews strings, e.g. F:Path\To\Folders instead of F:\Path\To\Folders
 If ($SourcesLocation -match "^[a-zA-Z]:$") { $SourcesLocation = $SourcesLocation + "\" }
 
 $OriginalPath = (Get-Location).Path
 Set-CMDrive -SiteCode $SiteCode -Server $SCCMServer -Path $OriginalPath
 
-#Write-Debug "Getting content"
 Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status "Getting all CM content objects"
-$AllContentObjects = Get-CMContent -Commands $Commands
+$AllContentObjects = Get-CMContent -Commands $Commands -SCCMServer $SCCMServer
 
 $Result = @()
 
 Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status "Calculating number of folders"
 $NumOfFolders = ([System.IO.Directory]::EnumerateDirectories($SourcesLocation, "*", "AllDirectories") | Measure-Object).count
+
 # Forcing int data type because double/float for benefit of modulo write-progoress
-[int]$interval = $NumOfFolders * 0.01
-$counter = 0
+If ($NumOfFolders -ge 150) { [int]$FolderInterval = $NumOfFolders * 0.01 } else { $FolderInterval = 2 }
+$FolderCount = 0
 
 Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status "Determinig unused folders"
 [System.IO.Directory]::EnumerateDirectories($SourcesLocation, "*", "AllDirectories") | ForEach-Object {
 
-    If (($counter % $interval) -eq 0) { 
-        [int]$Percentage = ($counter / $NumOfFolders * 100)
+    If (($FolderCounter % $FolderInterval) -eq 0) { 
+        [int]$Percentage = ($FolderCounter / $NumOfFolders * 100)
         Write-Progress -Id 2 -Activity "Looping through folders in $($SourcesLocation)" -PercentComplete $Percentage -Status "$($Percentage)% complete" -ParentId 1
         Write-Host "$(Get-Date): $($Percentage)%"
     }
     
-    $counter++
+    $FolderCounter++
     $Folder = $_
 
     $obj = New-Object PSCustomObject
@@ -478,16 +481,16 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
     }
     Else {
 
-        [int]$interval2 = $AllContentObjects.count * 0.25
-        $counter2 = 0
+        [int]$ContentInterval = $AllContentObjects.count * 0.25
+        $ContentCounter = 0
 
         ForEach ($ContentObject in $AllContentObjects) {
 
-            If ($counter2 % $interval2 -eq 0) {
-                Write-Progress -Id 3 -Activity "Looping through content objects" -PercentComplete ($counter2 / $AllContentObjects.count * 100) -ParentId 2
+            If ($ContentCounter % $ContentInterval -eq 0) {
+                Write-Progress -Id 3 -Activity "Looping through content objects" -PercentComplete ($ContentCounter / $AllContentObjects.count * 100) -ParentId 2
             }
 
-            $counter2++
+            $ContentCounter++
             
             # Whatever you do, ignore case!
 
@@ -495,7 +498,7 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
                 ($ContentObject.SourcePath -eq $null) {
                     break
                 }
-                (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $SCCMServer)) {
+                (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
                     # Package is local host
                     # Heavily assumes this scripts runs from primary site
                     $UsedBy += $ContentObject
@@ -549,3 +552,5 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
 }
 
 Set-Location $OriginalPath
+
+return $Result
