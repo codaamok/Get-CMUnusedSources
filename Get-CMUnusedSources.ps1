@@ -22,16 +22,19 @@
     Version history:
     1
 
-    TODO:
+    TODO: 
         - Comment regex
+        - Review comments
         - Dashimo?
         - Test if a content object source path has multiple shares that are applicable to it, e.g. Applications$ and Packages$ point to F:\Sources or something like that
+        - Test if two or more content objects are using the same path
         - optionally show progress, faster without
         - Adjust to run from any machine
         - As a result of the last machine, remove need for UAC and add mandatory parameters specifying servername + site code?
         
     Problems:
         - EnumerateDirectories method still sucks with access denied
+        - On remote machine runing script, F:\ locally evaluated as Intermediate. To do with the switch statement in the body after looping content objects.
         - What if a content object source path is \\server\share ?
         - Have I stupidly assumed share name is same as folder name on disk???
         - [RESOLVED - untested] Some content objects are absolute references to files, e.g. BootImage and OperatingSystemImage
