@@ -426,6 +426,7 @@ switch ($true) {
 }
 
 # Get NetBIOS of given $SCCMServer parameter so it's similar format as $env:COMPUTERNAME used in body during folder/content object for loop
+# And also for value pair in each content objects .AllPaths property (hashtable)
 If ($SCCMServer -as [IPAddress]) {
     $FQDN = [System.Net.Dns]::GetHostEntry("$($SCCMServer)").HostName
 }
