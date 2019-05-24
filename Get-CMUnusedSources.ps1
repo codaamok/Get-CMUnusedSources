@@ -551,6 +551,8 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
     }
 }
 
+Write-Host "$(Get-Date): 100%"
+
 Set-Location $OriginalPath
 
 return $Result
