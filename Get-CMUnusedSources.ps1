@@ -34,7 +34,6 @@
         
     Problems:
         - EnumerateDirectories method still sucks with access denied
-        - On remote machine runing script, F:\ locally evaluated as Intermediate. To do with the switch statement in the body after looping content objects.
         - What if a content object source path is \\server\share ?
         - Have I stupidly assumed share name is same as folder name on disk???
         - [RESOLVED - untested] Some content objects are absolute references to files, e.g. BootImage and OperatingSystemImage
@@ -503,6 +502,10 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
                     break
                 }
                 (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SCCMServer)) {
+                    # If user has given local path for $SourcesLocation, need to ensure
+                    # we don't produce false positives where a similar folder structure exists
+                    # on the remote machine and site server. e.g. packages let you specify local path
+                    # on site server
                     $NotUsed = $true
                     break
                 }
