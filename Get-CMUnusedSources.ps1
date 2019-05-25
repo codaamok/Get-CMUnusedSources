@@ -502,6 +502,10 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
                 ($ContentObject.SourcePath -eq $null) {
                     break
                 }
+                (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SCCMServer)) {
+                    $NotUsed = $true
+                    break
+                }
                 (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
                     # Package is local host
                     # Heavily assumes this scripts runs from primary site
