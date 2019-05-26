@@ -397,6 +397,14 @@ Function Set-CMDrive {
 
 }
 
+If (([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SCCMServer)) {
+    # If user has given local path for $SourcesLocation, need to ensure
+    # we don't produce false positives where a similar folder structure exists
+    # on the remote machine and site server. e.g. packages let you specify local path
+    # on site server
+    Throw "Aborting: will not be able to determine unused folders using local path remote from site server"
+}
+
 [System.Collections.ArrayList]$AllContentObjects = @()
 $Commands = @()
 
@@ -501,15 +509,7 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
                 ($ContentObject.SourcePath -eq $null) {
                     break
                 }
-                (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SCCMServer)) {
-                    # If user has given local path for $SourcesLocation, need to ensure
-                    # we don't produce false positives where a similar folder structure exists
-                    # on the remote machine and site server. e.g. packages let you specify local path
-                    # on site server
-                    $NotUsed = $true
-                    break
-                }
-                (([bool]([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
+                ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
                     # Package is local host
                     # Heavily assumes this scripts runs from primary site
                     $UsedBy += $ContentObject
