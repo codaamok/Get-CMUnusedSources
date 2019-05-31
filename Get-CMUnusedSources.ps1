@@ -335,7 +335,7 @@ Function Get-AllSharedFolders {
 Function Get-AllFolders {
     # Thanks Chris :-) www.christopherkibble.com
     Param(
-        [string]$dirName
+        [string]$FolderName
     )
 
     # This exists, because...
@@ -343,10 +343,10 @@ Function Get-AllFolders {
     # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
     # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
     # working dir when it reaches a null value, so ? $_ -ne $null is needed
-    [System.Collections.ArrayList]$FolderList = @((Get-ChildItem -Path $dirName -Directory).FullName | Where-Object { [string]::IsNullOrEmpty($_) -eq $false })
+    [System.Collections.ArrayList]$FolderList = @((Get-ChildItem -Path $FolderName -Directory).FullName | Where-Object { [string]::IsNullOrEmpty($_) -eq $false })
 
     ForEach($Folder in $FolderList) {
-        $FolderList += Get-AllFolders -dirName $Folder
+        $FolderList += Get-AllFolders -FolderName $Folder
     }
 
     return $FolderList
@@ -442,9 +442,9 @@ $SCCMServer = $FQDN.Split(".")[0]
 If ($SourcesLocation -match "^[a-zA-Z]:$") { $SourcesLocation = $SourcesLocation + "\" }
 
 If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status "Calculating number of folders" }
+
 If ($AltFolderSearch) {
-    [System.Collections.ArrayList]$AllFolders = Get-AllFolders -FolderName $SourcesLocation
-    
+    $AllFolders = Get-AllFolders -FolderName $SourcesLocation
 }
 Else {
     try {
