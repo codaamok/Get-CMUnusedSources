@@ -26,15 +26,12 @@
         - Comment regex
         - Review comments
         - Dashimo?
+        - How to handle and display access denied on folders
         - Test if a content object source path has multiple shares that are applicable to it, e.g. Applications$ and Packages$ point to F:\Sources or something like that
-        - Test if two or more content objects are using the same path
-        - optionally show progress, faster without
-        - Adjust to run from any machine
-        - As a result of the last machine, remove need for UAC and add mandatory parameters specifying servername + site code?
+        - Consider using \\?\UNC\server\share format, allows you to avoid low path limit
+        - Add \\?\UNC\server\share support to AllPaths property. Is this needed if Get-ChildItem fullname includes \\?\UNC\...?
         
     Problems:
-        - EnumerateDirectories method still sucks with access denied
-        - What if a content object source path is \\server\share ?
         - Have I stupidly assumed share name is same as folder name on disk???
         - [RESOLVED - untested] Some content objects are absolute references to files, e.g. BootImage and OperatingSystemImage
         - [RESOLVED] Need to add local path to $AllPaths surely?
@@ -120,7 +117,9 @@ Param (
     [Parameter(
         ParameterSetName='2'
     )]
-    [switch]$DeploymentPackages
+    [switch]$DeploymentPackages,
+    [switch]$AltFolderSearch,
+    [switch]$NoProgress
 )
 
 Function Get-CMContent {
@@ -138,68 +137,47 @@ Function Get-CMContent {
                     $AppMgmt = ([xml]$item.SDMPackageXML).AppMgmtDigest
                     $AppName = $AppMgmt.Application.DisplayInfo.FirstChild.Title
                     ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
+                        $SourcePath = $DeploymentType.Installer.Contents.Content.Location
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
                         $obj = New-Object PSObject
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)"
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($item.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
-                        If ($DeploymentType.Installer.Contents.Content.Location -ne $null) {
-                            $SourcePath = ($DeploymentType.Installer.Contents.Content.Location).TrimEnd('\')
-                            $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
-                            $ShareCache = $GetAllPathsResult[0]
-                            $AllPaths = $GetAllPathsResult[1]
-                        }
-                        Else {
-                            $SourcePath = $null
-                            $AllPaths = $null
-                        }
                         Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $AllPaths
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
                         $AllContent += $obj
+                        $ShareCache = $GetAllPathsResult[0]
                     }
                 }
                 "Get-CMDriver" { # I don't actually think it's possible for a driver to not have source path set
+                    $SourcePath = $item.ContentSourcePath
+                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer    
                     $obj = New-Object PSObject
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.CI_ID
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.LocalizedDisplayName
-                    If ($item.ContentSourcePath -ne $null) {
-                        $SourcePath = ($item.ContentSourcePath).TrimEnd('\')
-                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
-                        $ShareCache = $GetAllPathsResult[0]
-                        $AllPaths = $GetAllPathsResult[1]
-                    }
-                    Else {
-                        $SourcePath = $null
-                        $AllPaths = $null
-                    }
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $AllPaths
+                    Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
                     $AllContent += $obj
+                    $ShareCache = $GetAllPathsResult[0]
                 }
                 default {
+                    # OS images and boot iamges are absolute paths to files
+                    If ("Get-CMOperatingSystemImage","Get-CMBootImage" -contains $Command) {
+                        $SourcePath = Split-Path $item.PkgSourcePath
+                    }
+                    Else {
+                        $SourcePath = $item.PkgSourcePath
+                    }
+                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
                     $obj = New-Object PSObject
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.PackageId
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.Name
-                    If ($item.PkgSourcePath -ne $null) {
-                        # OS images and boot iamges are absolute paths to files
-                        If ("OperatingSystemImage","BootImage" -contains $obj.ContentType) {
-                            $SourcePath = (Split-Path $item.PkgSourcePath).TrimEnd('\')
-                        }
-                        Else {
-                            $SourcePath = ($item.PkgSourcePath).TrimEnd('\')
-                        }
-                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
-                        $ShareCache = $GetAllPathsResult[0]
-                        $AllPaths = $GetAllPathsResult[1]
-                    }
-                    Else {
-                        $SourcePath = $null
-                        $AllPaths = $null
-                    }
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $AllPaths
+                    Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
                     $AllContent += $obj
+                    $ShareCache = $GetAllPathsResult[0]
                 }   
             }
         }
@@ -215,128 +193,122 @@ Function Get-AllPaths {
     )
 
     $AllPaths = @{}
+    $result = @()
 
-    If ([bool]([System.Uri]$Path).IsUnc -eq $true) {
-        
-        ##### Grab server, share and remainder of path in to 4 groups:
-        ##### group 0 (whole match) "\\server\share\folder\folder", group 1 = "server", group 2 = "share", group 3 = "folder\folder"
+    If ([string]::IsNullOrEmpty($Path) -eq $false) {
+        $Path = $Path.TrimEnd("\")
+    }
 
-        $Regex = "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)\\([a-zA-Z0-9`~\\!@#$%^&(){}\'._ -]+)*" 
-        $RegexMatch = [regex]::Match($Path, $Regex)
-        switch ($true) {
-            ($RegexMatch.Groups[1].Success -eq $true) {
-                $Server = $RegexMatch.Groups[1].Value
-            }
-            ($RegexMatch.Groups[2].Success -eq $true) {
-                $ShareName = $RegexMatch.Groups[2].Value
-            }
-            ($RegexMatch.Groups[3].Success -eq $true) {
-                $ShareNameRemainder = "\" + $RegexMatch.Groups[3].Value
-            }
-            default { # do some sort of error handling with this later? prob not necessary as .IsUnc from its caller probably qualifiees it already?
-                $Server = ""
-                $ShareName = ""
-                $ShareNameRemainder = ""
-            }
+    ##### Determine path type
+
+    switch ($true) {
+        ($Path -match "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)(\\[a-zA-Z0-9`~\\!@#$%^&(){}\'._ -]+)") {
+            # Path that is \\server\share\folder
+            $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$Matches[3]
         }
+        ($Path -match "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)$") {
+            # Path that is \\server\share
+            $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$null
+        }
+        ($Path -match "^[a-zA-Z]:\\") {
+            # Path that is just drive letter
+            $AllPaths.Add($Path, $SCCMServer)
+            $result += $Cache
+            $result += $AllPaths
+            return $result
+        }
+        ([string]::IsNullOrEmpty($Path) -eq $true) {
+            $result += $Cache
+            $result += $AllPaths
+            return $result
+        }
+        default { 
+            Write-Warning "Unable to interpret path `"$($Path)`", used by `"$($obj.Name)`""
+            $AllPaths.Add($Path, $null)
+            $result += $Cache
+            $result += $AllPaths
+            return $result
+        }
+    }
 
-        ##### Determine FQDN, IP and NetBIOS
+    ##### Determine FQDN, IP and NetBIOS
 
+    If (Test-Connection -ComputerName $Server -Count 1 -ErrorAction SilentlyContinue) {
         If ($Server -as [IPAddress]) {
-            $FQDN = [System.Net.Dns]::GetHostEntry("$($Server)").HostName
+            try {
+                $FQDN = [System.Net.Dns]::GetHostEntry($Server).HostName
+                $NetBIOS = $FQDN.Split(".")[0]
+            }
+            catch {
+                $FQDN = $null
+            }
             $IP = $Server
         }
         Else {
-            $FQDN = [System.Net.Dns]::GetHostByName($Server).HostName
+            try {
+                $FQDN = [System.Net.Dns]::GetHostByName($Server).HostName
+                $NetBIOS = $FQDN.Split(".")[0]
+            }
+            catch {
+                $FQDN = $null
+            }
             $IP = (((Test-Connection $Server -Count 1 -ErrorAction SilentlyContinue)).IPV4Address).IPAddressToString
-        }
-        $NetBIOS = $FQDN.Split(".")[0]
-        
-        ##### Update the cache of shared folders and their local paths
-    
-        If ($Cache.ContainsKey($Server)) {
-            # Already have this server's shares cached
-        }
-        Else {
-            # Do not yet have this server's shares cached
-            # $AllSharedFolders is null if couldn't connect to serverr to get all shared folders
-            $NetBIOS,$FQDN,$IP | ForEach-Object {
-                $AllSharedFolders = Get-AllSharedFolders -Server $Server
-                If ($AllSharedFolders -ne $null) {
-                    $Cache.Add($_, $AllSharedFolders)
-                }
-            }
-        }
-
-        ##### Build the AllPaths property
-    
-        # Verify if the path is using drive letter, e.g. match only \\server\c$
-        # A different approach is taken to determine AllPaths if the path uses driver letter vs not a driver letter
-        $Regex = "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z]\$" 
-        If ($Path -match $Regex) {
-            # Convert UNC path to local path
-            $LocalPath = $Path -replace "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\" 
-            $LocalPath = $LocalPath -replace "\$",":"
-            # There was a need to capitalise the driver letter but I can't remember why now
-            $LocalPath = [regex]::replace($LocalPath, "^[a-z]:\\", { $args[0].Value.ToUpper() })
-    
-            # Start building $AllPaths with what we already know
-            $AllPaths.Add($LocalPath, $NetBIOS)
-            
-            # Now determine all possible paths
-            If ($Cache.$Server.count -ge 1) {
-                ForEach ($Share in $Cache.$Server.GetEnumerator()) {
-                    If($LocalPath.StartsWith($Share.Value, "CurrentCultureIgnoreCase")) {
-                        $AllPathsArr = @()
-                        $AllPathsArr += $LocalPath.replace($Share.Value, "\\$($FQDN)\$($Share.Name)")
-                        $AllPathsArr += $LocalPath.replace($Share.Value, "\\$($NetBIOS)\$($Share.Name)")
-                        $AllPathsArr += $LocalPath.replace($Share.Value, "\\$($IP)\$($Share.Name)")
-                        $AllPathsArr += (("\\" + $FQDN + "\" + $LocalPath) -replace ":", "$")
-                        $AllPathsArr += (("\\" + $NetBIOS + "\" + $LocalPath) -replace ":", "$")
-                        $AllPathsArr += (("\\" + $IP + "\" + $LocalPath) -replace ":", "$")
-                        # This is so we can avoid error messages about dictionary already containing key
-                        # Dupes can occur if there are multiple shares within the path
-                        ForEach ($item in $AllPathsArr) {
-                            If ($AllPaths.ContainsKey($item) -eq $false) {
-                                $AllPaths.Add($item, $NetBIOS)
-                            }
-                        }
-                    }
-                }
-            }
-            Else {
-                $AllPaths.Add($Path, $NetBIOS)
-            }
-        }
-        Else {
-
-            $AllPathsArr = @()
-
-            If ($Cache.$Server.ContainsKey($ShareName)) {
-                $LocalPath = $Cache.$Server.$ShareName
-                $AllPathsArr += ("\\$($FQDN)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
-                $AllPathsArr += ("\\$($NetBIOS)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
-                $AllPathsArr += ("\\$($IP)\$($LocalPath)$($ShareNameRemainder)" -replace ':', '$')
-                $AllPathsArr += "$($LocalPath)$($ShareNameRemainder)"
-            }
-
-            $AllPathsArr += "\\$($FQDN)\$($ShareName)$($ShareNameRemainder)"
-            $AllPathsArr += "\\$($NetBIOS)\$($ShareName)$($ShareNameRemainder)"
-            $AllPathsArr += "\\$($IP)\$($ShareName)$($ShareNameRemainder)"
-
-            ForEach ($item in $AllPathsArr) {
-                If ($AllPaths.ContainsKey($item) -eq $false) {
-                    $AllPaths.Add($item, $NetBIOS)
-                }
-            }
-    
         }
     }
     Else {
-        $AllPaths.Add($Path, $SCCMServer)
+        Write-Warning "Server `"$($Server)`" is unreachable, used by `"$($obj.Name)`""
+        $AllPaths.Add($Path, $null)
+        $result += $Cache
+        $result += $AllPaths
+        return $result
     }
-    
-    $result = @()
+
+    ##### Update the cache of shared folders and their local paths
+
+    If ($Cache.ContainsKey($Server) -eq $false) {
+        # Do not yet have this server's shares cached
+        # $AllSharedFolders is null if couldn't connect to serverr to get all shared folders
+        $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
+            $AllSharedFolders = Get-AllSharedFolders -Server $Server
+            If ([string]::IsNullOrEmpty($AllSharedFolders) -eq $false) {
+                $Cache.Add($_, $AllSharedFolders)
+            }
+            Else {
+                Write-Warning "Could not update cache because could not get shared folders from: `"$($Server)`" / `"$($_)`", used by `"$($obj.Name)`""
+            }
+        }
+    }
+
+    ##### Build the AllPaths property
+
+    $AllPathsArr = @()
+
+    $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object -Process {
+        If ($Cache.$_.ContainsKey($ShareName)) {
+            $LocalPath = $Cache.$_.$ShareName
+            $AllPathsArr += ("\\$($_)\$($LocalPath)$($ShareRemainder)" -replace ':', '$')
+        }
+        Else {
+            Write-Warning "Share `"$($ShareName)`" does not exist on `"$($_)`", used by `"$($obj.Name)`""
+        }
+        $AllPathsArr += "\\$($_)\$($ShareName)$($ShareRemainder)"
+    } -End {
+        If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
+            If ($LocalPath -match "^[a-zA-Z]:$") {
+                $AllPathsArr += "$($LocalPath)\"
+            }
+            Else {
+                $AllPathsArr += "$($LocalPath)$($ShareRemainder)"
+            }
+        }
+    }
+
+    ForEach ($item in $AllPathsArr) {
+        If ($AllPaths.ContainsKey($item) -eq $false) {
+            $AllPaths.Add($item, $NetBIOS)
+        }
+    }
+
     $result += $Cache
     $result += $AllPaths
     return $result
@@ -348,18 +320,38 @@ Function Get-AllSharedFolders {
     $AllShares = @{}
 
     try {
-        $Shares = Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop | Where-Object {-not [string]::IsNullOrEmpty($_.Path)} | Select Name, Path
+        $Shares = Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop | Where-Object {-not [string]::IsNullOrEmpty($_.Path)}
+        ForEach ($Share in $Shares) {
+            $AllShares += @{ $Share.Name = $Share.Path.TrimEnd("\") }
+        }
     }
     catch {
-        $Shares = $null
-    }
-
-    ForEach ($Share in $Shares) {
-        $AllShares += @{ $Share.Name = $Share.Path }
+        $AllShares = $null
     }
 
     return $AllShares
 }
+
+Function Get-AllFolders {
+    # Thanks Chris :-) www.christopherkibble.com
+    Param(
+        [string]$dirName
+    )
+
+    # This exists, because...
+
+    # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
+    # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
+    # working dir when it reaches a null value, so ? $_ -ne $null is needed
+    [System.Collections.ArrayList]$FolderList = @((Get-ChildItem -Path $dirName -Directory).FullName | Where-Object { [string]::IsNullOrEmpty($_) -eq $false })
+
+    ForEach($Folder in $FolderList) {
+        $FolderList += Get-AllFolders -dirName $Folder
+    }
+
+    return $FolderList
+}
+
 Function Set-CMDrive {
     Param(
         [string]$SiteCode,
@@ -449,27 +441,46 @@ $SCCMServer = $FQDN.Split(".")[0]
 # Otherwise EnumerateDirectories method happily walks through all folders without it and skews strings, e.g. F:Path\To\Folders instead of F:\Path\To\Folders
 If ($SourcesLocation -match "^[a-zA-Z]:$") { $SourcesLocation = $SourcesLocation + "\" }
 
+If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status "Calculating number of folders" }
+If ($AltFolderSearch) {
+    [System.Collections.ArrayList]$AllFolders = Get-AllFolders -FolderName $SourcesLocation
+    
+}
+Else {
+    try {
+        [System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Path $SourcesLocation -Directory -Recurse).FullName
+    }
+    catch {
+        Throw "Consider using -AltFolderSearch"
+    }
+}
+
+$AllFolders.Add($SourcesLocation)
+$AllFolders = $AllFolders | Sort
+
 $OriginalPath = (Get-Location).Path
 Set-CMDrive -SiteCode $SiteCode -Server $SCCMServer -Path $OriginalPath
 
-Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status "Getting all CM content objects"
+If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status "Getting all CM content objects" }
 $AllContentObjects = Get-CMContent -Commands $Commands -SCCMServer $SCCMServer
 
 $Result = @()
 
-Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status "Calculating number of folders"
-$NumOfFolders = ([System.IO.Directory]::EnumerateDirectories($SourcesLocation, "*", "AllDirectories") | Measure-Object).count
+$AllFolders | ForEach-Object -Begin {
 
-# Forcing int data type because double/float for benefit of modulo write-progoress
-If ($NumOfFolders -ge 150) { [int]$FolderInterval = $NumOfFolders * 0.01 } else { $FolderInterval = 2 }
-$FolderCount = 0
+    If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status "Determinig unused folders" }
+    
+    $NumOfFolders = $AllFolders.count
 
-Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status "Determinig unused folders"
-[System.IO.Directory]::EnumerateDirectories($SourcesLocation, "*", "AllDirectories") | ForEach-Object {
+    # Forcing int data type because double/float for benefit of modulo write-progoress
+    If ($NumOfFolders -ge 150) { [int]$FolderInterval = $NumOfFolders * 0.01 } else { $FolderInterval = 2 }
+    $FolderCounter = 0
+
+} -Process {
 
     If (($FolderCounter % $FolderInterval) -eq 0) { 
         [int]$Percentage = ($FolderCounter / $NumOfFolders * 100)
-        Write-Progress -Id 2 -Activity "Looping through folders in $($SourcesLocation)" -PercentComplete $Percentage -Status "$($Percentage)% complete" -ParentId 1
+        If ($NoProgress -eq $false ) { Write-Progress -Id 2 -Activity "Looping through folders in $($SourcesLocation)" -PercentComplete $Percentage -Status "$($Percentage)% complete" -ParentId 1 }
         Write-Host "$(Get-Date): $($Percentage)%"
     }
     
@@ -498,7 +509,7 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
         ForEach ($ContentObject in $AllContentObjects) {
 
             If ($ContentCounter % $ContentInterval -eq 0) {
-                Write-Progress -Id 3 -Activity "Looping through content objects" -PercentComplete ($ContentCounter / $AllContentObjects.count * 100) -ParentId 2
+                If ($NoProgress -eq $false) { Write-Progress -Id 3 -Activity "Looping through content objects" -PercentComplete ($ContentCounter / $AllContentObjects.count * 100) -ParentId 2 }
             }
 
             $ContentCounter++
@@ -506,12 +517,11 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
             # Whatever you do, ignore case!
 
             switch($true) {
-                ($ContentObject.SourcePath -eq $null) {
+                ([string]::IsNullOrEmpty($ContentObject.SourcePath) -eq $true) {
                     break
                 }
                 ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
                     # Package is local host
-                    # Heavily assumes this scripts runs from primary site
                     $UsedBy += $ContentObject
                     break
                 }
@@ -560,10 +570,12 @@ Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66
         $Result += $obj
 
     }
+} -End {
+
+    Write-Host "$(Get-Date): 100%"
+
+    Set-Location $OriginalPath
+    
+    # return $Result
+
 }
-
-Write-Host "$(Get-Date): 100%"
-
-Set-Location $OriginalPath
-
-return $Result
