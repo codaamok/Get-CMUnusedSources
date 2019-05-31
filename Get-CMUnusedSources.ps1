@@ -444,7 +444,7 @@ If ($SourcesLocation -match "^[a-zA-Z]:$") { $SourcesLocation = $SourcesLocation
 If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status "Calculating number of folders" }
 
 If ($AltFolderSearch) {
-    $AllFolders = Get-AllFolders -FolderName $SourcesLocation
+    [System.Collections.ArrayList]$AllFolders = Get-AllFolders -FolderName $SourcesLocation
 }
 Else {
     try {
