@@ -14,10 +14,11 @@
     Created:
     Updated:
     Thanks to:
-        Cody
-        Chris Kibble
-        Chris Dent
-        PsychoData (the regex mancer)
+        Cody Mathis (Windows Admin slack)
+        Chris Kibble (Windows Admin slack)
+        Chris Dent (Windows Admin slack)
+        PsychoData ("the regex mancer", Windows Admin slack)
+        Patrick (Windows Admin slack)
     
     Version history:
     1
@@ -25,11 +26,10 @@
     TODO: 
         - Comment regex
         - Review comments
-        - Dashimo?
-        - How to handle and display access denied on folders
-        - Test if a content object source path has multiple shares that are applicable to it, e.g. Applications$ and Packages$ point to F:\Sources or something like that
-        - Consider using \\?\UNC\server\share format, allows you to avoid low path limit
-        - Add \\?\UNC\server\share support to AllPaths property. Is this needed if Get-ChildItem fullname includes \\?\UNC\...?
+        - Dashimo, ultimatedashboard?
+        - Logging
+        - Application DT uninstall content source locations
+        - Consider supporting \\?\UNC\server\share format, allows you to avoid low path limit
         
     Problems:
         - Have I stupidly assumed share name is same as folder name on disk???
@@ -265,17 +265,17 @@ Function Get-AllPaths {
 
     ##### Update the cache of shared folders and their local paths
 
-    If ($Cache.ContainsKey($Server) -eq $false) {
+    If (($Cache.Keys -contains $FQDN) -eq $false) {
         # Do not yet have this server's shares cached
         # $AllSharedFolders is null if couldn't connect to serverr to get all shared folders
-        $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
-            $AllSharedFolders = Get-AllSharedFolders -Server $Server
-            If ([string]::IsNullOrEmpty($AllSharedFolders) -eq $false) {
+        $AllSharedFolders = Get-AllSharedFolders -Server $FQDN
+        If ([string]::IsNullOrEmpty($AllSharedFolders) -eq $false) {
+            $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
                 $Cache.Add($_, $AllSharedFolders)
             }
-            Else {
-                Write-Warning "Could not update cache because could not get shared folders from: `"$($Server)`" / `"$($_)`", used by `"$($obj.Name)`""
-            }
+        }
+        Else {
+            Write-Warning "Could not update cache because could not get shared folders from: `"$($FQDN)`", used by `"$($obj.Name)`""
         }
     }
 
@@ -283,15 +283,23 @@ Function Get-AllPaths {
 
     $AllPathsArr = @()
 
+    ## Build AllPaths based on share name from given Path
+
     $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object -Process {
-        If ($Cache.$_.ContainsKey($ShareName)) {
-            $LocalPath = $Cache.$_.$ShareName
-            $AllPathsArr += ("\\$($_)\$($LocalPath)$($ShareRemainder)" -replace ':', '$')
+        $AltServer = $_
+        $LocalPath = ($Cache.$AltServer.GetEnumerator() | Where-Object { $_.Key -eq $ShareName }).Value
+        If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
+            $AllPathsArr += ("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$')
+            $SharesWithSamePath = ($Cache.$AltServer.GetEnumerator() | Where-Object { $_.Value -eq $LocalPath }).Key
+            $SharesWithSamePath | ForEach-Object -Process {
+                $AltShareName = $_
+                $AllPathsArr += "\\$($AltServer)\$($AltShareName)$($ShareRemainder)"
+            }
         }
         Else {
             Write-Warning "Share `"$($ShareName)`" does not exist on `"$($_)`", used by `"$($obj.Name)`""
         }
-        $AllPathsArr += "\\$($_)\$($ShareName)$($ShareRemainder)"
+        $AllPathsArr += "\\$($AltServer)\$($ShareName)$($ShareRemainder)"
     } -End {
         If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
             If ($LocalPath -match "^[a-zA-Z]:$") {
@@ -304,7 +312,7 @@ Function Get-AllPaths {
     }
 
     ForEach ($item in $AllPathsArr) {
-        If ($AllPaths.ContainsKey($item) -eq $false) {
+        If (($AllPaths.Keys -contains $item) -eq $false) {
             $AllPaths.Add($item, $NetBIOS)
         }
     }
@@ -322,6 +330,8 @@ Function Get-AllSharedFolders {
     try {
         $Shares = Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop | Where-Object {-not [string]::IsNullOrEmpty($_.Path)}
         ForEach ($Share in $Shares) {
+            # The TrimEnd method is only really concerned for drive letter shares
+            # as they're usually stored as f$ = "F:\" and this messes up Get-AllPaths a little
             $AllShares += @{ $Share.Name = $Share.Path.TrimEnd("\") }
         }
     }
@@ -350,6 +360,53 @@ Function Get-AllFolders {
     }
 
     return $FolderList
+}
+
+function Check-FileSystemAccess
+{
+    # Thanks to Patrick in Windows Admins slack
+    param
+    (
+        [string]$Path,
+        [System.Security.AccessControl.FileSystemRights]$Rights
+    )
+
+    [System.Security.Principal.WindowsIdentity]$currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    if (Test-Path $Path)
+    {
+        try
+        {
+            [System.Security.AccessControl.FileSystemSecurity]$security = (Get-Item -Path $Path -Force).GetAccessControl()
+            if ($security -ne $null)
+            {
+                [System.Security.AccessControl.AuthorizationRuleCollection]$rules = $security.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])
+                for([int]$i = 0; $i -lt $rules.Count; $i++)
+                {
+                    if (($currentIdentity.Groups.Contains($rules[$i].IdentityReference)) -or ($currentIdentity.User -eq $rules[$i].IdentityReference))
+                    {
+                        [System.Security.AccessControl.FileSystemAccessRule]$fileSystemRule = [System.Security.AccessControl.FileSystemAccessRule]$rules[$i]
+                        if ($fileSystemRule.FileSystemRights.HasFlag($Rights))
+                        {
+                            return $true
+                            break;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                return $false
+            }
+        }
+        catch
+        {
+            return $false
+        }
+    }
+    else
+    {
+        return $false
+    }
 }
 
 Function Set-CMDrive {
@@ -462,7 +519,10 @@ $OriginalPath = (Get-Location).Path
 Set-CMDrive -SiteCode $SiteCode -Server $SCCMServer -Path $OriginalPath
 
 If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status "Getting all CM content objects" }
+
 $AllContentObjects = Get-CMContent -Commands $Commands -SCCMServer $SCCMServer
+
+Set-Location $OriginalPath
 
 $Result = @()
 
@@ -491,9 +551,14 @@ $AllFolders | ForEach-Object -Begin {
     Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $Folder
 
     $UsedBy = @()
+    $AccessDenied = @()
     $IntermediatePath = $false
     $ToSkip = $false
     $NotUsed = $false
+
+    If ((Check-FileSystemAccess -Path $Folder -Rights Read) -ne $true) {
+        $UsedBy += "Access denied"
+    }
 
     If ($Folder.StartsWith($ToSkip)) {
         # Should probably rename $NotUsed to something more appropriate to truely reflect its meaning
@@ -521,13 +586,13 @@ $AllFolders | ForEach-Object -Begin {
                     break
                 }
                 ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
-                    # Package is local host
-                    $UsedBy += $ContentObject
+                    # Package is local host to the site server
+                    $UsedBy += $ContentObject.Name
                     break
                 }
-                ($ContentObject.AllPaths.ContainsKey($Folder) -eq $true) {
+                (($ContentObject.AllPaths.Keys -contains $Folder) -eq $true) {
                     # By default the ContainsKey method ignores case
-                    $UsedBy += $ContentObject
+                    $UsedBy += $ContentObject.Name
                     break
                 }
                 (($ContentObject.AllPaths.Keys -match [Regex]::Escape($Folder)).Count -gt 0) {
@@ -550,7 +615,7 @@ $AllFolders | ForEach-Object -Begin {
 
         switch ($true) {
             ($UsedBy.count -gt 0) {
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy.Name) -join ', ')
+                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy) -join ', ')
                 # Commented out the below because if we move a found content object, it removes other relevant paths associated with it being identified as an intermediate path
                 #ForEach ($item in $UsedBy) {
                 #   $AllContentObjects.Remove($item) # Stop me walking through content objects that I've already found 
@@ -572,10 +637,7 @@ $AllFolders | ForEach-Object -Begin {
     }
 } -End {
 
-    Write-Host "$(Get-Date): 100%"
-
-    Set-Location $OriginalPath
-    
-    # return $Result
+    Write-Host "$(Get-Date): Complete"
+    return $Result
 
 }
