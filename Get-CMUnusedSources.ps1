@@ -28,15 +28,25 @@
         - Review comments
         - Dashimo, ultimatedashboard?
         - Logging
+        - Any functions accessing variables in parent scope and not passed as parameter to said function? Clean it!
+            - Get-AllFolders for -AltFolderSearch
         - Application DT uninstall content source locations
         - Consider supporting \\?\UNC\server\share format, allows you to avoid low path limit
-        
-    Problems:
         - Have I stupidly assumed share name is same as folder name on disk???
-        - [RESOLVED - untested] Some content objects are absolute references to files, e.g. BootImage and OperatingSystemImage
-        - [RESOLVED] Need to add local path to $AllPaths surely?
-        - [RESOLVED - untested] Adding server property to $AllPaths for the below purpose. : If content object SourcePath is e.g. \\FILESERVER\SCCMSources\Applications\7zip\x64 and local path resolves to F:\SCCMSources\Applications\7zip\x64 and user gigves -SourcesLocations as F:\ and F:\Applications\7zip\x64 exists on primary site server (where script should be running from) this will produce a false positive
+
+    Test plan:
+        - content objects with:
+            - no content path
+            - Local paths
+            - Permission denied on various folders with content object source paths inside
+            - server unreachable
+            - server reachable but share doesn't exist
+            - server reachable, share exists but no longer a valid path
+            - 2 (or more) shared folders pointing to same path
+            - Running from site server and specifying local path for $SourcesLocation
+
 #>
+#Requires -Version 5.1
 [cmdletbinding(DefaultParameterSetName='1')]
 Param (
     [Parameter(
@@ -211,7 +221,7 @@ Function Get-AllPaths {
             $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$null
         }
         ($Path -match "^[a-zA-Z]:\\") {
-            # Path that is just drive letter
+            # Path that is local
             $AllPaths.Add($Path, $SCCMServer)
             $result += $Cache
             $result += $AllPaths
@@ -343,33 +353,94 @@ Function Get-AllSharedFolders {
 }
 
 Function Get-AllFolders {
-    # Thanks Chris :-) www.christopherkibble.com
     Param(
-        [string]$FolderName
+        [string]$Path,
+        [bool]$AltFolderSearch
     )
+
+
+    switch ($true) { 
+        ($Path -match "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9\\`~!@#$%^&(){}\'._ -]+") {
+            # Matches if it's a UNC path
+            # Could have queried .IsUnc property on [System.Uri] object but I wanted to verify user hadn't first given us \\?\ path type
+            $Path = $Path -replace "^\\\\\?\\UNC\\", "\\"
+            break
+        }
+        ($Path -match "^[a-zA-Z]:\\") {
+            $Path = "\\?\" + $Path
+            break
+        }
+        default {
+            Write-Warning "Couldn't determine path type for `"$Paths`" so might have problems accessing folders that breach MAX_PATH limit"
+        }
+    }
+    
+    If ($Path -match "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9\\`~!@#$%^&(){}\'._ -]+") {
+        $Path = $Path -replace "^\\\\\?\\UNC\\", "\\"
+    }
+    
+    If ($AltFolderSearch) {
+        [System.Collections.ArrayList]$result = Start-AltFolderSearch -FolderName $Path
+    }
+    Else {
+        try {
+            [System.Collections.ArrayList]$result = (Get-ChildItem -Path $Path -Directory -Recurse -ErrorAction SilentlyContinue).FullName
+        }
+        catch {
+            Throw "Consider using -AltFolderSearch"
+        }
+    }
+    
+    switch ($true) {
+        ($Path -match "^\\\\\?\\UNC\\") {
+            $Path = $Path -replace [regex]::Escape("\\?\UNC"), "\"
+            $result.Add($Path)
+            $result = $result -replace [Regex]::Escape("\\?\UNC"), "\"
+            break
+        }
+        ($Path -match "^\\\\\?\\[a-zA-Z]{1}:\\") {
+            $Path = $Path -replace [regex]::Escape("\\?\"), ""
+            $result.Add($Path)
+            $result = $result -replace [Regex]::Escape("\\?\"), ""
+            break
+        }
+        default {
+            # Perhaps don't terminate, but this is just for testing I guess
+            Throw "Couldn't reset $Path"
+        }
+    }
+    
+    $result = $result | Sort
+
+    return $result
+}
+Function Start-AltFolderSearch {
+    Param([string]$FolderName)
+
+    # Thanks Chris :-) www.christopherkibble.com
 
     # This exists, because...
 
     # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
     # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
     # working dir when it reaches a null value, so ? $_ -ne $null is needed
-    [System.Collections.ArrayList]$FolderList = @((Get-ChildItem -Path $FolderName -Directory).FullName | Where-Object { [string]::IsNullOrEmpty($_) -eq $false })
+    [System.Collections.ArrayList]$FolderList = @((Get-ChildItem -Path $FolderName -Directory -ErrorAction SilentlyContinue).FullName | Where-Object { [string]::IsNullOrEmpty($_) -eq $false })
 
     ForEach($Folder in $FolderList) {
-        $FolderList += Get-AllFolders -FolderName $Folder
+        $FolderList += Start-AltFolderSearch -FolderName $Folder
     }
 
     return $FolderList
 }
 
-function Check-FileSystemAccess
-{
-    # Thanks to Patrick in Windows Admins slack
+Function Check-FileSystemAccess {
     param
     (
         [string]$Path,
         [System.Security.AccessControl.FileSystemRights]$Rights
     )
+
+    # Thanks to Patrick in Windows Admins slack
 
     [System.Security.Principal.WindowsIdentity]$currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
     if (Test-Path $Path)
@@ -494,26 +565,9 @@ Else {
 }
 $SCCMServer = $FQDN.Split(".")[0]
 
-# Add backslash to $SourcesLocation if given local drive letter and it's missing
-# Otherwise EnumerateDirectories method happily walks through all folders without it and skews strings, e.g. F:Path\To\Folders instead of F:\Path\To\Folders
-If ($SourcesLocation -match "^[a-zA-Z]:$") { $SourcesLocation = $SourcesLocation + "\" }
-
 If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status "Calculating number of folders" }
 
-If ($AltFolderSearch) {
-    [System.Collections.ArrayList]$AllFolders = Get-AllFolders -FolderName $SourcesLocation
-}
-Else {
-    try {
-        [System.Collections.ArrayList]$AllFolders = (Get-ChildItem -Path $SourcesLocation -Directory -Recurse).FullName
-    }
-    catch {
-        Throw "Consider using -AltFolderSearch"
-    }
-}
-
-$AllFolders.Add($SourcesLocation)
-$AllFolders = $AllFolders | Sort
+$AllFolders = Get-AllFolders -Path $SourcesLocation -AltFolderSearch $AltFolderSearch.IsPresent
 
 $OriginalPath = (Get-Location).Path
 Set-CMDrive -SiteCode $SiteCode -Server $SCCMServer -Path $OriginalPath
@@ -558,6 +612,7 @@ $AllFolders | ForEach-Object -Begin {
 
     If ((Check-FileSystemAccess -Path $Folder -Rights Read) -ne $true) {
         $UsedBy += "Access denied"
+        # Still continue anyway because we can still determine if it's an exact match or intermediate path of a content object
     }
 
     If ($Folder.StartsWith($ToSkip)) {
