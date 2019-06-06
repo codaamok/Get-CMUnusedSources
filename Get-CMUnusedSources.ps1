@@ -24,15 +24,16 @@
     1
 
     TODO: 
-        - Comment regex
+        - $SiteServer should be validated - omg stupid hard
+        - Sometimes use $result, sometimes use a name specific exit var in functions - tidy
         - Review comments
-        - Dashimo, ultimatedashboard?
-        - Logging
+        - Output report
+        - Logging? Might be good idea to use write-tocmlog (whatever Bryan uses in his)
         - Any functions accessing variables in parent scope and not passed as parameter to said function? Clean it!
             - Get-AllFolders for -AltFolderSearch
-        - Application DT uninstall content source locations
-        - Consider supporting \\?\UNC\server\share format, allows you to avoid low path limit
-        - Have I stupidly assumed share name is same as folder name on disk???
+        - For the -All param: https://github.com/PowerShell/PSScriptAnalyzer/blob/development/RuleDocumentation/AvoidDefaultValueSwitchParameter.md
+        - Get-CMApplication in multi site hierarchy, do you get other sites stuff too?
+        - Add SourceSite parameter/filter to all Get-CM* cmdlets with $SiteCode
 
     Test plan:
         - content objects with:
@@ -50,12 +51,6 @@
 [cmdletbinding(DefaultParameterSetName='1')]
 Param (
     [Parameter(
-        ParameterSetName='1',
-        Mandatory=$true, 
-        Position = 0
-    )]
-    [Parameter(
-        ParameterSetName='2',
         Mandatory=$true, 
         Position = 0
     )]
@@ -70,28 +65,16 @@ Param (
     })]
     [string]$SourcesLocation,
     [Parameter(
-        ParameterSetName='1',
-        Mandatory=$true, 
-        Position = 1
-    )]
-    [Parameter(
-        ParameterSetName='2',
         Mandatory=$true, 
         Position = 1
     )]
     [ValidatePattern('^[a-zA-Z0-9]{3}$')]
     [string]$SiteCode,
     [Parameter(
-        ParameterSetName='1',
         Mandatory=$true, 
         Position = 2
     )]
-    [Parameter(
-        ParameterSetName='2',
-        Mandatory=$true, 
-        Position = 2
-    )]
-    [string]$SCCMServer,
+    [string]$SiteServer,
     [Parameter(
         ParameterSetName='1'
     )]
@@ -135,7 +118,7 @@ Param (
 Function Get-CMContent {
     Param(
         $Commands,
-        [string]$SCCMServer
+        [string]$Server
     )
     # Invaluable resource for getting all source locations: https://www.verboon.info/2013/07/configmgr-2012-script-to-retrieve-source-path-locations/
     $AllContent = @()
@@ -147,21 +130,25 @@ Function Get-CMContent {
                     $AppMgmt = ([xml]$item.SDMPackageXML).AppMgmtDigest
                     $AppName = $AppMgmt.Application.DisplayInfo.FirstChild.Title
                     ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
-                        $SourcePath = $DeploymentType.Installer.Contents.Content.Location
-                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
-                        $obj = New-Object PSObject
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)"
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($item.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                        $AllContent += $obj
+                        $SourcePaths = $DeploymentType.Installer.Contents.Content.Location
+                        # Using ForEach-Object because even if $SourcePaths is null, it will iterate null once which is ideal here where deployment types can have no source path.
+                        # Also, A deployment type can have more than 1 source path: for install and uninstall paths
+                        $SourcePaths | ForEach-Object {
+                            $GetAllPathsResult = Get-AllPaths -Path $_ -Cache $ShareCache -SiteServer $Server
+                            $obj = New-Object PSObject
+                            Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
+                            Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)"
+                            Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($item.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
+                            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath "$_"
+                            Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
+                            $AllContent += $obj
+                        }
                         $ShareCache = $GetAllPathsResult[0]
                     }
                 }
                 "Get-CMDriver" { # I don't actually think it's possible for a driver to not have source path set
                     $SourcePath = $item.ContentSourcePath
-                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer    
+                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $Server    
                     $obj = New-Object PSObject
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.CI_ID
@@ -179,7 +166,7 @@ Function Get-CMContent {
                     Else {
                         $SourcePath = $item.PkgSourcePath
                     }
-                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SCCMServer $SCCMServer
+                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $Server
                     $obj = New-Object PSObject
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.PackageId
@@ -199,7 +186,7 @@ Function Get-AllPaths {
     param (
         [string]$Path,
         [hashtable]$Cache,
-        [string]$SCCMServer
+        [string]$SiteServer
     )
 
     $AllPaths = @{}
@@ -222,7 +209,7 @@ Function Get-AllPaths {
         }
         ($Path -match "^[a-zA-Z]:\\") {
             # Path that is local
-            $AllPaths.Add($Path, $SCCMServer)
+            $AllPaths.Add($Path, $SiteServer)
             $result += $Cache
             $result += $AllPaths
             return $result
@@ -233,7 +220,7 @@ Function Get-AllPaths {
             return $result
         }
         default { 
-            Write-Warning "Unable to interpret path `"$($Path)`", used by `"$($obj.Name)`""
+            Write-Warning "Unable to interpret path `"$($Path)`""
             $AllPaths.Add($Path, $null)
             $result += $Cache
             $result += $AllPaths
@@ -266,7 +253,7 @@ Function Get-AllPaths {
         }
     }
     Else {
-        Write-Warning "Server `"$($Server)`" is unreachable, used by `"$($obj.Name)`""
+        Write-Warning "Server `"$($Server)`" is unreachable"
         $AllPaths.Add($Path, $null)
         $result += $Cache
         $result += $AllPaths
@@ -285,7 +272,7 @@ Function Get-AllPaths {
             }
         }
         Else {
-            Write-Warning "Could not update cache because could not get shared folders from: `"$($FQDN)`", used by `"$($obj.Name)`""
+            Write-Warning "Could not update cache because could not get shared folders from: `"$($FQDN)`""
         }
     }
 
@@ -307,12 +294,13 @@ Function Get-AllPaths {
             }
         }
         Else {
-            Write-Warning "Share `"$($ShareName)`" does not exist on `"$($_)`", used by `"$($obj.Name)`""
+            Write-Warning "Share `"$($ShareName)`" does not exist on `"$($_)`""
         }
         $AllPathsArr += "\\$($AltServer)\$($ShareName)$($ShareRemainder)"
     } -End {
         If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
             If ($LocalPath -match "^[a-zA-Z]:$") {
+                # Match if drive letter
                 $AllPathsArr += "$($LocalPath)\"
             }
             Else {
@@ -358,15 +346,15 @@ Function Get-AllFolders {
         [bool]$AltFolderSearch
     )
 
-
     switch ($true) { 
         ($Path -match "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9\\`~!@#$%^&(){}\'._ -]+") {
             # Matches if it's a UNC path
             # Could have queried .IsUnc property on [System.Uri] object but I wanted to verify user hadn't first given us \\?\ path type
-            $Path = $Path -replace "^\\\\\?\\UNC\\", "\\"
+            $Path = $Path -replace "^\\\\", "\\?\UNC\"
             break
         }
         ($Path -match "^[a-zA-Z]:\\") {
+            # Matches if starts with drive letter
             $Path = "\\?\" + $Path
             break
         }
@@ -375,32 +363,28 @@ Function Get-AllFolders {
         }
     }
     
-    If ($Path -match "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9\\`~!@#$%^&(){}\'._ -]+") {
-        $Path = $Path -replace "^\\\\\?\\UNC\\", "\\"
-    }
-    
     If ($AltFolderSearch) {
         [System.Collections.ArrayList]$result = Start-AltFolderSearch -FolderName $Path
     }
     Else {
         try {
-            [System.Collections.ArrayList]$result = (Get-ChildItem -Path $Path -Directory -Recurse -ErrorAction SilentlyContinue).FullName
+            [System.Collections.ArrayList]$result = (Get-ChildItem -LiteralPath $Path -Directory -Recurse).FullName
         }
         catch {
             Throw "Consider using -AltFolderSearch"
         }
     }
+
+    $result.Add($Path) | Out-Null
     
     switch ($true) {
         ($Path -match "^\\\\\?\\UNC\\") {
-            $Path = $Path -replace [regex]::Escape("\\?\UNC"), "\"
-            $result.Add($Path)
-            $result = $result -replace [Regex]::Escape("\\?\UNC"), "\"
+            # Matches if starts with \\?\UNC\
+            $result = $result -replace [Regex]::Escape("\\?\UNC\"), "\\"
             break
         }
         ($Path -match "^\\\\\?\\[a-zA-Z]{1}:\\") {
-            $Path = $Path -replace [regex]::Escape("\\?\"), ""
-            $result.Add($Path)
+            # Matches if starts with \\?\A:\ (A is just an example drive letter used)
             $result = $result -replace [Regex]::Escape("\\?\"), ""
             break
         }
@@ -417,9 +401,12 @@ Function Get-AllFolders {
 Function Start-AltFolderSearch {
     Param([string]$FolderName)
 
-    # Thanks Chris :-) www.christopherkibble.com
+    # This exists, because in testing on some older storage devices Get-ChildItem would return an exception "Not enough quota is available to process this command."
+    # FullyQualifiedErrorId: DirIOError,Microsoft.PowerShell.Commands.GetChildItemCommand
+    # when hit around 50k collection size. Packet trace and deeper digging yielded some sort of SMBv1 exception about a quota limit being exceeded
+    # however issue was not applicable to all smbv1 shares.
 
-    # This exists, because...
+    # This workaround exists because thanks to Chris Kibble, found a way to recursively grab all folders without hitting said limit.
 
     # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
     # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
@@ -517,7 +504,7 @@ Function Set-CMDrive {
 
 }
 
-If ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SCCMServer)) {
+If ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SiteServer)) {
     # If user has given local path for $SourcesLocation, need to ensure
     # we don't produce false positives where a similar folder structure exists
     # on the remote machine and site server. e.g. packages let you specify local path
@@ -555,26 +542,26 @@ switch ($true) {
     }
 }
 
-# Get NetBIOS of given $SCCMServer parameter so it's similar format as $env:COMPUTERNAME used in body during folder/content object for loop
+# Get NetBIOS of given $SiteServer parameter so it's similar format as $env:COMPUTERNAME used in body during folder/content object for loop
 # And also for value pair in each content objects .AllPaths property (hashtable)
-If ($SCCMServer -as [IPAddress]) {
-    $FQDN = [System.Net.Dns]::GetHostEntry("$($SCCMServer)").HostName
+If ($SiteServer -as [IPAddress]) {
+    $FQDN = [System.Net.Dns]::GetHostEntry("$($SiteServer)").HostName
 }
 Else {
-    $FQDN = [System.Net.Dns]::GetHostByName($SCCMServer).HostName
+    $FQDN = [System.Net.Dns]::GetHostByName($SiteServer).HostName
 }
-$SCCMServer = $FQDN.Split(".")[0]
+$SiteServer = $FQDN.Split(".")[0]
 
 If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status "Calculating number of folders" }
 
-$AllFolders = Get-AllFolders -Path $SourcesLocation -AltFolderSearch $AltFolderSearch.IsPresent
+$AllFolders = Get-AllFolders -Path $SourcesLocation #-AltFolderSearch $AltFolderSearch.IsPresent
 
 $OriginalPath = (Get-Location).Path
-Set-CMDrive -SiteCode $SiteCode -Server $SCCMServer -Path $OriginalPath
+Set-CMDrive -SiteCode $SiteCode -Server $SiteServer -Path $OriginalPath
 
 If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status "Getting all CM content objects" }
 
-$AllContentObjects = Get-CMContent -Commands $Commands -SCCMServer $SCCMServer
+$AllContentObjects = Get-CMContent -Commands $Commands -Server $SiteServer
 
 Set-Location $OriginalPath
 
