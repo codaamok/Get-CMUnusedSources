@@ -28,12 +28,14 @@
         - Sometimes use $result, sometimes use a name specific exit var in functions - tidy
         - Review comments
         - Output report
-        - Logging? Might be good idea to use write-tocmlog (whatever Bryan uses in his)
+        - Use PSDefaultParameter ting
         - Any functions accessing variables in parent scope and not passed as parameter to said function? Clean it!
             - Get-AllFolders for -AltFolderSearch
-        - For the -All param: https://github.com/PowerShell/PSScriptAnalyzer/blob/development/RuleDocumentation/AvoidDefaultValueSwitchParameter.md
-        - Get-CMApplication in multi site hierarchy, do you get other sites stuff too?
-        - Add SourceSite parameter/filter to all Get-CM* cmdlets with $SiteCode
+        - Comment based help
+        - Consider replacing use of ArrayList with something that doesn't need Out-Null. Catch: some alternate .net collections doesn't support multi dimensional or lists of anything other than strings
+        - Begin Process End blocks, maybe?
+        - Decide on component name instead of "Undecided" in main body
+        - Get-CMContent could be simplier with fewer repeated lines
 
     Test plan:
         - content objects with:
@@ -50,10 +52,7 @@
 #Requires -Version 5.1
 [cmdletbinding(DefaultParameterSetName='1')]
 Param (
-    [Parameter(
-        Mandatory=$true, 
-        Position = 0
-    )]
+    [Parameter(Mandatory=$true, Position = 0)]
     [ValidateScript({
         If (!([System.IO.Directory]::Exists($_))) {
             Throw "Invalid path or access denied"
@@ -64,119 +63,173 @@ Param (
         }
     })]
     [string]$SourcesLocation,
-    [Parameter(
-        Mandatory=$true, 
-        Position = 1
-    )]
+    [Parameter(Mandatory=$true, Position = 1)]
     [ValidatePattern('^[a-zA-Z0-9]{3}$')]
     [string]$SiteCode,
-    [Parameter(
-        Mandatory=$true, 
-        Position = 2
-    )]
+    [Parameter(Mandatory=$true, Position = 2)]
+    [ValidateScript({
+        If(!(Test-Connection -ComputerName $_ -Count 1 -ErrorAction SilentlyContinue)) {
+            Throw "Host `"$($_)`" is unreachable"
+        } Else {
+            return $true
+        }
+    })]
     [string]$SiteServer,
-    [Parameter(
-        ParameterSetName='1'
-    )]
-    [switch]$All = $true,
-    [Parameter(
-        ParameterSetName='2'
-    )]
     [switch]$Packages,
-    [Parameter(
-        ParameterSetName='2'
-    )]
     [switch]$Applications,
-    [Parameter(
-        ParameterSetName='2'
-    )]
     [switch]$Drivers,
-    [Parameter(
-        ParameterSetName='2'
-    )]
     [switch]$DriverPackages,
-    [Parameter(
-        ParameterSetName='2'
-    )]
     [switch]$OSImages,
-    [Parameter(
-        ParameterSetName='2'
-    )]
     [switch]$OSUpgradeImages,
-    [Parameter(
-        ParameterSetName='2'
-    )]
     [switch]$BootImages,
-    [Parameter(
-        ParameterSetName='2'
-    )]
     [switch]$DeploymentPackages,
     [switch]$AltFolderSearch,
-    [switch]$NoProgress
+    [switch]$NoProgress,
+    [switch]$Log
 )
+
+<#
+    Define PSDefaultParameterValues
+#>
+
+$Bias = Get-WmiObject -Class Win32_TimeZone | Select-Object -ExpandProperty Bias
+$PSDefaultParameterValues["Write-CMLogEntry:Bias"]=$Bias
+$LogFolder = $PSCommandPath | Split-Path -Parent
+$PSDefaultParameterValues["Write-CMLogEntry:Folder"]=$LogFolder
+$LogFileName = ($PSCommandPath | Split-Path -Leaf) + "_" + (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss') + ".log"
+$PSDefaultParameterValues["Write-CMLogEntry:FileName"]=$LogFileName
+$PSDefaultParameterValues["Write-CMLogEntry:Enable"]=$Log.IsPresent
+
+<#
+    Define functions
+#>
+
+Function Write-CMLogEntry {
+    # Thanks Cody Mathis!
+    param (
+        [parameter(Mandatory = $true, HelpMessage = 'Value added to the log file.')]
+        [ValidateNotNullOrEmpty()]
+        [string]$Value,
+        [parameter(Mandatory = $false, HelpMessage = 'Severity for the log entry. 1 for Informational, 2 for Warning and 3 for Error.')]
+        [ValidateNotNullOrEmpty()]
+        [ValidateSet('1', '2', '3')]
+        [string]$Severity = 1,
+        [parameter(Mandatory = $false, HelpMessage = "Stage that the log entry is occuring in, log refers to as 'component'.")]
+        [ValidateNotNullOrEmpty()]
+        [string]$Component,
+        [parameter(Mandatory = $true, HelpMessage = 'Name of the log file that the entry will written to.')]
+        [ValidateNotNullOrEmpty()]
+        [string]$FileName,
+        [parameter(Mandatory = $true, HelpMessage = 'Path to the folder where the log will be stored.')]
+        [ValidateNotNullOrEmpty()]
+        [string]$Folder,
+        [parameter(Mandatory = $false, HelpMessage = 'Set timezone Bias to ensure timestamps are accurate')]
+        [ValidateNotNullOrEmpty()]
+        [int32]$Bias,
+        [parameter(Mandatory = $true, HelpMessage = 'A switch that disables the use of this function.')]
+        [ValidateNotNullOrEmpty()]
+        [bool]$Enable
+    )
+    If($Enable) {
+        # Determine log file location
+        $LogFilePath = Join-Path -Path $Folder -ChildPath $FileName
+
+        # Construct time stamp for log entry
+        switch -regex ($Bias) {
+            '-' {
+                $Time = [string]::Concat($(Get-Date -Format 'HH:mm:ss.fff'), $Bias)
+            }
+            Default {
+                $Time = [string]::Concat($(Get-Date -Format 'HH:mm:ss.fff'), '+', $Bias)
+            }
+        }
+        # Construct date for log entry
+        $Date = (Get-Date -Format 'MM-dd-yyyy')
+        
+        # Construct context for log entry
+        $Context = $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
+        
+        # Construct final log entry
+        $LogText = [string]::Format('<![LOG[{0}]LOG]!><time="{1}" date="{2}" component="{3}" context="{4}" type="{5}" thread="{6}" file="">', $Value, $Time, $Date, $Component, $Context, $Severity, $PID)
+        
+        # Add value to log file
+        try {
+            $StreamWriter = [System.IO.StreamWriter]::new($LogFilePath, 'Append')
+            $StreamWriter.WriteLine($LogText)
+            $StreamWriter.Close()
+        }
+        catch [System.Exception] {
+            Write-Warning -Message "Unable to append log entry to $FileName file. Error message: $($_.Exception.Message)"
+        }
+    }
+}
 
 Function Get-CMContent {
     Param(
-        $Commands,
-        [string]$Server
+        [array]$Commands,
+        [string]$SiteServer,
+        [string]$SiteCode
     )
-    # Invaluable resource for getting all source locations: https://www.verboon.info/2013/07/configmgr-2012-script-to-retrieve-source-path-locations/
-    $AllContent = @()
-    $ShareCache = @{}
+    [System.Collections.ArrayList]$AllContent = @()
+    [hashtable]$ShareCache = @{}
     ForEach ($Command in $Commands) {
+        Write-CMLogEntry -Value "Getting: $($Command -replace 'Get-CM')" -Severity 1 -Component "GatherContentObjects"
+        $Command = $Command + " | Where-Object SourceSite -eq `"$($SiteCode)`""
         ForEach ($item in (Invoke-Expression $Command)) {
-            switch ($Command) {
-                "Get-CMApplication" {
-                    $AppMgmt = ([xml]$item.SDMPackageXML).AppMgmtDigest
+            switch ($true) {
+                $Command.StartsWith("Get-CMApplication") {
+                    $AppMgmt = [xml]$item.SDMPackageXML | Select-Object -ExpandProperty AppMgmtDigest
                     $AppName = $AppMgmt.Application.DisplayInfo.FirstChild.Title
                     ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
                         $SourcePaths = $DeploymentType.Installer.Contents.Content.Location
                         # Using ForEach-Object because even if $SourcePaths is null, it will iterate null once which is ideal here where deployment types can have no source path.
                         # Also, A deployment type can have more than 1 source path: for install and uninstall paths
                         $SourcePaths | ForEach-Object {
-                            $GetAllPathsResult = Get-AllPaths -Path $_ -Cache $ShareCache -SiteServer $Server
+                            $GetAllPathsResult = Get-AllPaths -Path $_ -Cache $ShareCache -SiteServer $SiteServer
                             $obj = New-Object PSObject
-                            Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
+                            Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Application"
                             Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)"
                             Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($item.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
                             Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath "$_"
                             Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                            $AllContent += $obj
+                            $AllContent.Add($obj) | Out-Null
                         }
                         $ShareCache = $GetAllPathsResult[0]
                     }
                 }
-                "Get-CMDriver" { # I don't actually think it's possible for a driver to not have source path set
+                $Command.StartsWith("Get-CMDriver") { # I don't actually think it's possible for a driver to not have source path set
                     $SourcePath = $item.ContentSourcePath
-                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $Server    
+                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer    
                     $obj = New-Object PSObject
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
+                    Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Driver"
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.CI_ID
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.LocalizedDisplayName
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                    $AllContent += $obj
+                    $AllContent.Add($obj) | Out-Null
                     $ShareCache = $GetAllPathsResult[0]
                 }
                 default {
                     # OS images and boot iamges are absolute paths to files
-                    If ("Get-CMOperatingSystemImage","Get-CMBootImage" -contains $Command) {
+                    If (($Command.StartsWith("Get-CMOperatingSystemImage")) -Or ($Command.StartsWith("Get-CMBootImage"))) {
                         $SourcePath = Split-Path $item.PkgSourcePath
                     }
                     Else {
                         $SourcePath = $item.PkgSourcePath
                     }
-                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $Server
+                    $ContentType = ([Regex]::Matches($Command, "Get-CM([^\s]+)")).Groups[1].Value
+                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer
                     $obj = New-Object PSObject
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value ($Command -replace "Get-CM")
+                    Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value $ContentType
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.PackageId
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.Name
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
                     Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                    $AllContent += $obj
+                    $AllContent.Add($obj) | Out-Null
                     $ShareCache = $GetAllPathsResult[0]
                 }   
             }
+            Write-CMLogEntry -Value "$($obj.ContentType) - $($obj.UniqueID) - $($obj.Name) - $($obj.SourcePath) - $($obj.AllPaths.Keys -join ',')" -Severity 1 -Component "GatherContentObjects"
         }
     }
     return $AllContent
@@ -189,8 +242,8 @@ Function Get-AllPaths {
         [string]$SiteServer
     )
 
-    $AllPaths = @{}
-    $result = @()
+    [System.Collections.ArrayList]$result = @()
+    [hashtable]$AllPaths = @{}
 
     If ([string]::IsNullOrEmpty($Path) -eq $false) {
         $Path = $Path.TrimEnd("\")
@@ -202,28 +255,30 @@ Function Get-AllPaths {
         ($Path -match "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)(\\[a-zA-Z0-9`~\\!@#$%^&(){}\'._ -]+)") {
             # Path that is \\server\share\folder
             $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$Matches[3]
+            break
         }
         ($Path -match "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)$") {
             # Path that is \\server\share
             $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$null
+            break
         }
         ($Path -match "^[a-zA-Z]:\\") {
             # Path that is local
             $AllPaths.Add($Path, $SiteServer)
-            $result += $Cache
-            $result += $AllPaths
+            $result.Add($Cache) | Out-Null
+            $result.Add($AllPaths) | Out-Null
             return $result
         }
         ([string]::IsNullOrEmpty($Path) -eq $true) {
-            $result += $Cache
-            $result += $AllPaths
+            $result.Add($Cache) | Out-Null
+            $result.Add($AllPaths) | Out-Null
             return $result
         }
         default { 
             Write-Warning "Unable to interpret path `"$($Path)`""
             $AllPaths.Add($Path, $null)
-            $result += $Cache
-            $result += $AllPaths
+            $result.Add($Cache) | Out-Null
+            $result.Add($AllPaths) | Out-Null
             return $result
         }
     }
@@ -233,7 +288,7 @@ Function Get-AllPaths {
     If (Test-Connection -ComputerName $Server -Count 1 -ErrorAction SilentlyContinue) {
         If ($Server -as [IPAddress]) {
             try {
-                $FQDN = [System.Net.Dns]::GetHostEntry($Server).HostName
+                $FQDN = [System.Net.Dns]::GetHostEntry($Server) | Select-Object -ExpandProperty HostName
                 $NetBIOS = $FQDN.Split(".")[0]
             }
             catch {
@@ -243,7 +298,7 @@ Function Get-AllPaths {
         }
         Else {
             try {
-                $FQDN = [System.Net.Dns]::GetHostByName($Server).HostName
+                $FQDN = [System.Net.Dns]::GetHostByName($Server) | Select-Object -ExpandProperty HostName
                 $NetBIOS = $FQDN.Split(".")[0]
             }
             catch {
@@ -255,8 +310,8 @@ Function Get-AllPaths {
     Else {
         Write-Warning "Server `"$($Server)`" is unreachable"
         $AllPaths.Add($Path, $null)
-        $result += $Cache
-        $result += $AllPaths
+        $result.Add($Cache) | Out-Null
+        $result.Add($AllPaths) | Out-Null
         return $result
     }
 
@@ -278,33 +333,33 @@ Function Get-AllPaths {
 
     ##### Build the AllPaths property
 
-    $AllPathsArr = @()
+    [System.Collections.ArrayList]$AllPathsArr = @()
 
     ## Build AllPaths based on share name from given Path
 
     $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object -Process {
         $AltServer = $_
-        $LocalPath = ($Cache.$AltServer.GetEnumerator() | Where-Object { $_.Key -eq $ShareName }).Value
+        $LocalPath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Key -eq $ShareName } | Select-Object -ExpandProperty Value
         If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
-            $AllPathsArr += ("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$')
-            $SharesWithSamePath = ($Cache.$AltServer.GetEnumerator() | Where-Object { $_.Value -eq $LocalPath }).Key
+            $AllPathsArr.Add(("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$')) | Out-Null
+            $SharesWithSamePath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Value -eq $LocalPath } | Select-Object -ExpandProperty Key
             $SharesWithSamePath | ForEach-Object -Process {
                 $AltShareName = $_
-                $AllPathsArr += "\\$($AltServer)\$($AltShareName)$($ShareRemainder)"
+                $AllPathsArr.Add("\\$($AltServer)\$($AltShareName)$($ShareRemainder)") | Out-Null
             }
         }
         Else {
             Write-Warning "Share `"$($ShareName)`" does not exist on `"$($_)`""
         }
-        $AllPathsArr += "\\$($AltServer)\$($ShareName)$($ShareRemainder)"
+        $AllPathsArr.Add("\\$($AltServer)\$($ShareName)$($ShareRemainder)") | Out-Null
     } -End {
         If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
             If ($LocalPath -match "^[a-zA-Z]:$") {
                 # Match if drive letter
-                $AllPathsArr += "$($LocalPath)\"
+                $AllPathsArr.Add("$($LocalPath)\") | Out-Null
             }
             Else {
-                $AllPathsArr += "$($LocalPath)$($ShareRemainder)"
+                $AllPathsArr.Add("$($LocalPath)$($ShareRemainder)") | Out-Null
             }
         }
     }
@@ -315,22 +370,22 @@ Function Get-AllPaths {
         }
     }
 
-    $result += $Cache
-    $result += $AllPaths
+    $result.Add($Cache) | Out-Null
+    $result.Add($AllPaths) | Out-Null
     return $result
 }
 
 Function Get-AllSharedFolders {
     Param([String]$Server)
 
-    $AllShares = @{}
+    [hashtable]$AllShares = @{}
 
     try {
         $Shares = Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop | Where-Object {-not [string]::IsNullOrEmpty($_.Path)}
         ForEach ($Share in $Shares) {
             # The TrimEnd method is only really concerned for drive letter shares
             # as they're usually stored as f$ = "F:\" and this messes up Get-AllPaths a little
-            $AllShares += @{ $Share.Name = $Share.Path.TrimEnd("\") }
+            $AllShares.Add($Share.Name, $Share.Path.TrimEnd("\"))
         }
     }
     catch {
@@ -359,7 +414,8 @@ Function Get-AllFolders {
             break
         }
         default {
-            Write-Warning "Couldn't determine path type for `"$Paths`" so might have problems accessing folders that breach MAX_PATH limit"
+            Write-CMLogEntry -Value "Couldn't determine path type for `"$($Paths)`" so might have problems accessing folders that breach MAX_PATH limit" -Severity 2 -Component "GatherFolders"
+            Write-Warning "Couldn't determine path type for `"$($Paths)`" so might have problems accessing folders that breach MAX_PATH limit"
         }
     }
     
@@ -368,9 +424,10 @@ Function Get-AllFolders {
     }
     Else {
         try {
-            [System.Collections.ArrayList]$result = (Get-ChildItem -LiteralPath $Path -Directory -Recurse).FullName
+            [System.Collections.ArrayList]$result = Get-ChildItem -LiteralPath $Path -Directory -Recurse | Select-Object -ExpandProperty FullName
         }
         catch {
+            Write-CMLogEntry -Value "Consider using -AltFolderSearch, quiting..." -Severity 3 -Component "GatherFolders"
             Throw "Consider using -AltFolderSearch"
         }
     }
@@ -390,11 +447,12 @@ Function Get-AllFolders {
         }
         default {
             # Perhaps don't terminate, but this is just for testing I guess
-            Throw "Couldn't reset $Path"
+            Write-CMLogEntry -Value "Couldn't reset $($Path), quiting..." -Severity 3 -Component "GatherFolders"
+            Throw "Couldn't reset $($Path)"
         }
     }
     
-    $result = $result | Sort
+    $result = $result | Sort-Object
 
     return $result
 }
@@ -411,10 +469,10 @@ Function Start-AltFolderSearch {
     # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
     # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
     # working dir when it reaches a null value, so ? $_ -ne $null is needed
-    [System.Collections.ArrayList]$FolderList = @((Get-ChildItem -Path $FolderName -Directory -ErrorAction SilentlyContinue).FullName | Where-Object { [string]::IsNullOrEmpty($_) -eq $false })
+    [System.Collections.ArrayList]$FolderList = @(Get-ChildItem -Path $FolderName -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Where-Object { [string]::IsNullOrEmpty($_) -eq $false })
 
     ForEach($Folder in $FolderList) {
-        $FolderList += Start-AltFolderSearch -FolderName $Folder
+        $FolderList.Add($(Start-AltFolderSearch -FolderName $Folder)) | Out-Null
     }
 
     return $FolderList
@@ -492,7 +550,7 @@ Function Set-CMDrive {
         Set-Location "$($SiteCode):\" -ErrorAction Stop
 
         # Verify given sitecode
-        If((Get-CMSite -SiteCode $SiteCode).SiteCode -ne $SiteCode) { throw }
+        If((Get-CMSite -SiteCode $SiteCode | Select-Object -ExpandProperty SiteCode) -ne $SiteCode) { throw }
 
     } catch {
         If((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue) -ne $null) {
@@ -504,72 +562,85 @@ Function Set-CMDrive {
 
 }
 
+Write-CMLogEntry -Value "Starting" -Severity 1 -Component "Initilisation"
+
+# Write all parameters passed to script to log
+ForEach($var in $PSBoundParameters.GetEnumerator()) {
+    Write-CMLogEntry -Value "- $($var.Key): $($var.Value)" -Severity 1 -Component "Initilisation"
+}
+
 If ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SiteServer)) {
     # If user has given local path for $SourcesLocation, need to ensure
     # we don't produce false positives where a similar folder structure exists
     # on the remote machine and site server. e.g. packages let you specify local path
     # on site server
-    Throw "Aborting: will not be able to determine unused folders using local path remote from site server"
+    Write-CMLogEntry -Value "Won't be able to determine unused folders with given local path while running remotely from site server, quitting" -Severity 2 -Component "Initilisation"
+    Throw "Will not be able to determine unused folders using local path remote from site server"
 }
 
 [System.Collections.ArrayList]$AllContentObjects = @()
-$Commands = @()
 
 switch ($true) {
-    (($Packages -eq $true) -Or ($All -eq $true)) {
-        $Commands += "Get-CMPackage"
+    ($Packages.IsPresent) {
+        [array]$Commands += "Get-CMPackage"
     }
-    (($Applications -eq $true) -Or ($All -eq $true)) {
-        $Commands += "Get-CMApplication"
+    ($Applications.IsPresent) {
+        [array]$Commands += "Get-CMApplication"
     }
-    (($Drivers -eq $true) -Or ($All -eq $true)) {
-        $Commands += "Get-CMDriver"
+    ($Drivers.IsPresent) {
+        [array]$Commands += "Get-CMDriver"
     }
-    (($DriverPackages -eq $true) -Or ($All -eq $true)) {
-        $Commands += "Get-CMDriverPackage"
+    ($DriverPackages.IsPresent) {
+        [array]$Commands += "Get-CMDriverPackage"
     }
-    (($OSImages -eq $true) -Or ($All -eq $true)) {
-        $Commands += "Get-CMOperatingSystemImage"
+    ($OSImages.IsPresent) {
+        [array]$Commands += "Get-CMOperatingSystemImage"
     }
-    (($OSUpgradeImages -eq $true) -Or ($All -eq $true)) {
-        $Commands += "Get-CMOperatingSystemInstaller"
+    ($OSUpgradeImages.IsPresent) {
+        [array]$Commands += "Get-CMOperatingSystemInstaller"
     }
-    (($BootImages -eq $true) -Or ($All -eq $true)) {
-        $Commands += "Get-CMBootImage"
+    ($BootImages.IsPresent) {
+        [array]$Commands += "Get-CMBootImage"
     }
-    (($DeploymentPackages -eq $true) -Or ($All -eq $true)) {
-        $Commands += "Get-CMSoftwareUpdateDeploymentPackage"
+    ($DeploymentPackages.IsPresent) {
+        [array]$Commands += "Get-CMSoftwareUpdateDeploymentPackage"
+    }
+    default {
+        [array]$Commands = "Get-CMPackage", "Get-CMApplication", "Get-CMDriver", "Get-CMDriverPackage", "Get-CMOperatingSystemImage", "Get-CMOperatingSystemInstaller", "Get-CMBootImage", "Get-CMSoftwareUpdateDeploymentPackage"
     }
 }
 
 # Get NetBIOS of given $SiteServer parameter so it's similar format as $env:COMPUTERNAME used in body during folder/content object for loop
 # And also for value pair in each content objects .AllPaths property (hashtable)
 If ($SiteServer -as [IPAddress]) {
-    $FQDN = [System.Net.Dns]::GetHostEntry("$($SiteServer)").HostName
+    $FQDN = [System.Net.Dns]::GetHostEntry("$($SiteServer)") | Select-Object -ExpandProperty HostName
 }
 Else {
-    $FQDN = [System.Net.Dns]::GetHostByName($SiteServer).HostName
+    $FQDN = [System.Net.Dns]::GetHostByName($SiteServer) | Select-Object -ExpandProperty HostName
 }
 $SiteServer = $FQDN.Split(".")[0]
 
+Write-CMLogEntry -Value "Gathering folders: $($SourcesLocation)" -Severity 1 -Component "GatherFolders"
 If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status "Calculating number of folders" }
-
 $AllFolders = Get-AllFolders -Path $SourcesLocation #-AltFolderSearch $AltFolderSearch.IsPresent
+Write-CMLogEntry -Value "Number of folders: $($AllFolders.count)" -Severity 1 -Component "GatherFolders"
 
-$OriginalPath = (Get-Location).Path
+$OriginalPath = Get-Location | Select-Object -ExpandProperty Path
 Set-CMDrive -SiteCode $SiteCode -Server $SiteServer -Path $OriginalPath
 
+Write-CMLogEntry -Value "Gathering content objects: $($Commands -replace 'Get-CM')" -Severity 1 -Component "GatherContentObjects"
 If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status "Getting all CM content objects" }
-
-$AllContentObjects = Get-CMContent -Commands $Commands -Server $SiteServer
+$AllContentObjects = Get-CMContent -Commands $Commands -SiteServer $SiteServer -SiteCode $SiteCode
+Write-CMLogEntry -Value "Number of content objects: $($AllContentObjects.count)" -Severity 1 -Component "GatherContentObjects"
 
 Set-Location $OriginalPath
 
-$Result = @()
+[System.Collections.ArrayList]$Result = @()
 
 $AllFolders | ForEach-Object -Begin {
 
     If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status "Determinig unused folders" }
+    Write-CMLogEntry -Value "Determinig unused folders" -Severity 1 -Component "Undecided"
     
     $NumOfFolders = $AllFolders.count
 
@@ -579,26 +650,25 @@ $AllFolders | ForEach-Object -Begin {
 
 } -Process {
 
-    If (($FolderCounter % $FolderInterval) -eq 0) { 
-        [int]$Percentage = ($FolderCounter / $NumOfFolders * 100)
-        If ($NoProgress -eq $false ) { Write-Progress -Id 2 -Activity "Looping through folders in $($SourcesLocation)" -PercentComplete $Percentage -Status "$($Percentage)% complete" -ParentId 1 }
-        Write-Host "$(Get-Date): $($Percentage)%"
-    }
-    
     $FolderCounter++
     $Folder = $_
 
+    If (($FolderCounter % $FolderInterval) -eq 0) { 
+        [int]$Percentage = ($FolderCounter / $NumOfFolders * 100)
+        If ($NoProgress -eq $false ) { Write-Progress -Id 2 -Activity "Looping through folders in $($SourcesLocation)" -PercentComplete $Percentage -Status "$($Percentage)% complete" -ParentId 1 }
+    }
+    
     $obj = New-Object PSCustomObject
     Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $Folder
 
-    $UsedBy = @()
-    $AccessDenied = @()
+    [System.Collections.ArrayList]$UsedBy = @()
     $IntermediatePath = $false
     $ToSkip = $false
     $NotUsed = $false
 
     If ((Check-FileSystemAccess -Path $Folder -Rights Read) -ne $true) {
-        $UsedBy += "Access denied"
+        Write-CMLogEntry -Value "$($Folder) : Access denied" -Severity 2 -Component "Undecided"
+        $UsedBy.Add("Access denied") | Out-Null
         # Still continue anyway because we can still determine if it's an exact match or intermediate path of a content object
     }
 
@@ -629,12 +699,12 @@ $AllFolders | ForEach-Object -Begin {
                 }
                 ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
                     # Package is local host to the site server
-                    $UsedBy += $ContentObject.Name
+                    $UsedBy.Add($ContentObject.Name) | Out-Null
                     break
                 }
                 (($ContentObject.AllPaths.Keys -contains $Folder) -eq $true) {
                     # By default the ContainsKey method ignores case
-                    $UsedBy += $ContentObject.Name
+                    $UsedBy.Add($ContentObject.Name) | Out-Null
                     break
                 }
                 (($ContentObject.AllPaths.Keys -match [Regex]::Escape($Folder)).Count -gt 0) {
@@ -658,28 +728,27 @@ $AllFolders | ForEach-Object -Begin {
         switch ($true) {
             ($UsedBy.count -gt 0) {
                 Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy) -join ', ')
-                # Commented out the below because if we move a found content object, it removes other relevant paths associated with it being identified as an intermediate path
-                #ForEach ($item in $UsedBy) {
-                #   $AllContentObjects.Remove($item) # Stop me walking through content objects that I've already found 
-                #}
+                Write-CMLogEntry -Value "$($Folder) : used by : $($UsedBy)" -Severity 1 -Component "Undecided"
                 break
             }
             ($IntermediatePath -eq $true) {
                 Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
+                Write-CMLogEntry -Value "$($Folder) : an intermediate folder" -Severity 1 -Component "Undecided"
                 break
             }
             ($NotUsed -eq $true) {
                 Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
+                Write-CMLogEntry -Value "$($Folder) : not used" -Severity 1 -Component "Undecided"
                 break
             }
         }
     
-        $Result += $obj
+        $Result.Add($obj) | Out-Null
 
     }
 } -End {
 
-    Write-Host "$(Get-Date): Complete"
+    Write-CMLogEntry -Value "Finished" -Severity 1 -Component "Exit"
     return $Result
 
 }
