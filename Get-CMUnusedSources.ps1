@@ -32,10 +32,21 @@
         - Any functions accessing variables in parent scope and not passed as parameter to said function? Clean it!
             - Get-AllFolders for -AltFolderSearch
         - Comment based help
-        - Consider replacing use of ArrayList with something that doesn't need Out-Null. Catch: some alternate .net collections doesn't support multi dimensional or lists of anything other than strings
         - Begin Process End blocks, maybe?
         - Decide on component name instead of "Undecided" in main body
-        - Get-CMContent could be simplier with fewer repeated lines
+        - For the applications, do not see a object in the output for each deployment. Seems like one object for all deployment types with the data of the last retrieved deployment type (maybe)?
+        - How can I validate the results?
+        - Log is slow to write to at the end
+        - End of log file stats e.g. 
+        -- Number of content objects (maybe break that down per type)
+        -- Number of folders 
+        -- Number of access denied
+        -- Number of unused folders
+        -- Run time?
+        - Export posh object to file?
+        - Decide on standard for -f format string or inline variable use
+        - Decide on stardard for regex > .StartsWith
+
 
     Test plan:
         - content objects with:
@@ -47,6 +58,14 @@
             - server reachable, share exists but no longer a valid path
             - 2 (or more) shared folders pointing to same path
             - Running from site server and specifying local path for $SourcesLocation
+
+    What to put in report:
+        - Total space consumed by unused folders (robocopy?)
+        - Content objects with invalid path
+        - All unused folders
+
+    Final remarks:
+        - The given ID in the log/report for DeploymentTypes unfortunately isn't what you need for the Get-CMDeploymentType cmdlet. However you can use the names. The XML for the deployment types does not contain the CI_ID, which is what used by Get-CMDeploymentType.
 
 #>
 #Requires -Version 5.1
@@ -85,27 +104,32 @@ Param (
     [switch]$DeploymentPackages,
     [switch]$AltFolderSearch,
     [switch]$NoProgress,
-    [switch]$Log
+    [switch]$Log,
+    [int32]$LogFileSize = 5MB,
+    [int32]$NumOfRotatedLogs = 0,
+    [switch]$ObjectExport
 )
 
 <#
     Define PSDefaultParameterValues
 #>
 
-$Bias = Get-WmiObject -Class Win32_TimeZone | Select-Object -ExpandProperty Bias
-$PSDefaultParameterValues["Write-CMLogEntry:Bias"]=$Bias
-$LogFolder = $PSCommandPath | Split-Path -Parent
-$PSDefaultParameterValues["Write-CMLogEntry:Folder"]=$LogFolder
-$LogFileName = ($PSCommandPath | Split-Path -Leaf) + "_" + (Get-Date -Format 'yyyy-MM-dd_HH-mm-ss') + ".log"
-$PSDefaultParameterValues["Write-CMLogEntry:FileName"]=$LogFileName
+$JobId = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
+
+# Write-CMLogEntry
+$PSDefaultParameterValues["Write-CMLogEntry:Bias"]=(Get-WmiObject -Class Win32_TimeZone | Select-Object -ExpandProperty Bias)
+$PSDefaultParameterValues["Write-CMLogEntry:Folder"]=($PSCommandPath | Split-Path -Parent)
+$PSDefaultParameterValues["Write-CMLogEntry:FileName"]=(($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + ".log")
 $PSDefaultParameterValues["Write-CMLogEntry:Enable"]=$Log.IsPresent
+$PSDefaultParameterValues["Write-CMLogEntry:LogFileSize"]=$LogFileSize
+$PSDefaultParameterValues["Write-CMLogEntry:MaxNumOfRotatedLogs"]=$NumOfRotatedLogs
 
 <#
     Define functions
 #>
 
 Function Write-CMLogEntry {
-    # Thanks Cody Mathis!
+    # Update with link to Windows Admins github when merged
     param (
         [parameter(Mandatory = $true, HelpMessage = 'Value added to the log file.')]
         [ValidateNotNullOrEmpty()]
@@ -123,16 +147,70 @@ Function Write-CMLogEntry {
         [parameter(Mandatory = $true, HelpMessage = 'Path to the folder where the log will be stored.')]
         [ValidateNotNullOrEmpty()]
         [string]$Folder,
-        [parameter(Mandatory = $false, HelpMessage = 'Set timezone Bias to ensure timestamps are accurate')]
+        [parameter(Mandatory = $false, HelpMessage = 'Set timezone Bias to ensure timestamps are accurate.')]
         [ValidateNotNullOrEmpty()]
         [int32]$Bias,
-        [parameter(Mandatory = $true, HelpMessage = 'A switch that disables the use of this function.')]
+        [parameter(Mandatory = $false, HelpMessage = 'Maximum size of log file before it rolls over. Set to 0 to disable log rotation.')]
         [ValidateNotNullOrEmpty()]
-        [bool]$Enable
+        [int32]$MaxLogFileSize = 5MB,
+        [parameter(Mandatory = $false, HelpMessage = 'Maximum number of rotated log files to keep. Set to 0 for unlimited rotated log files.')]
+        [ValidateNotNullOrEmpty()]
+        [int32]$MaxNumOfRotatedLogs = 0,
+        [parameter(Mandatory = $true, HelpMessage = 'A switch that enables the use of this function.')]
+        [ValidateNotNullOrEmpty()]
+        [switch]$Enable,
+        [switch]$WriteHost
     )
-    If($Enable) {
+
+    # Runs this regardless of $Enable value
+    If ($WriteHost.IsPresent) {
+        Write-Host $Value
+    }
+
+    If ($Enable) {
         # Determine log file location
         $LogFilePath = Join-Path -Path $Folder -ChildPath $FileName
+
+        If ((([System.IO.FileInfo]$LogFilePath).Exists) -And ($MaxLogFileSize -ne 0)) {
+
+            # Get log size in bytes
+            $LogFileSize = [System.IO.FileInfo]$LogFilePath | Select-Object -ExpandProperty Length
+
+            If ($LogFileSize -ge $MaxLogFileSize) {
+
+                # Get log file name without extension
+                $LogFileNameWithoutExt = $FileName -replace ([System.IO.Path]::GetExtension($FileName))
+
+                # Get already rolled over logs
+                $AllLogs = Get-ChildItem -Path $Folder -Name "$($LogFileNameWithoutExt)_*" -File
+
+                # Sort them numerically (so the oldest is first in the list)
+                $AllLogs = $AllLogs | Sort-Object -Descending { $_ -replace '_\d+\.lo_$' }, { [Int]($_ -replace '^.+\d_|\.lo_$') }
+            
+                ForEach ($Log in $AllLogs) {
+                    # Get log number
+                    $LogFileNumber = [int32][Regex]::Matches($Log, "_([0-9]+)\.lo_$").Groups[1].Value
+                    switch (($LogFileNumber -eq $MaxNumOfRotatedLogs) -And ($MaxNumOfRotatedLogs -ne 0)) {
+                        $true {
+                            # Delete log if it breaches $MaxNumOfRotatedLogs parameter value
+                            [System.IO.File]::Delete("$($Folder)\$($Log)")
+                        }
+                        $false {
+                            # Rename log to +1
+                            $NewFileName = $Log -replace "_([0-9]+)\.lo_$","_$($LogFileNumber+1).lo_"
+                            [System.IO.File]::Copy("$($Folder)\$($Log)", "$($Folder)\$($NewFileName)", $true)
+                        }
+                    }
+                }
+
+                # Copy main log to _1.lo_
+                [System.IO.File]::Copy($LogFilePath, "$($Folder)\$($LogFileNameWithoutExt)_1.lo_", $true)
+
+                # Blank the main log
+                $StreamWriter = [System.IO.StreamWriter]::new($LogFilePath, $false)
+                $StreamWriter.Close()
+            }
+        }
 
         # Construct time stamp for log entry
         switch -regex ($Bias) {
@@ -145,13 +223,13 @@ Function Write-CMLogEntry {
         }
         # Construct date for log entry
         $Date = (Get-Date -Format 'MM-dd-yyyy')
-        
+    
         # Construct context for log entry
         $Context = $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)
-        
+    
         # Construct final log entry
         $LogText = [string]::Format('<![LOG[{0}]LOG]!><time="{1}" date="{2}" component="{3}" context="{4}" type="{5}" thread="{6}" file="">', $Value, $Time, $Date, $Component, $Context, $Severity, $PID)
-        
+    
         # Add value to log file
         try {
             $StreamWriter = [System.IO.StreamWriter]::new($LogFilePath, 'Append')
@@ -176,8 +254,8 @@ Function Get-CMContent {
         Write-CMLogEntry -Value "Getting: $($Command -replace 'Get-CM')" -Severity 1 -Component "GatherContentObjects"
         $Command = $Command + " | Where-Object SourceSite -eq `"$($SiteCode)`""
         ForEach ($item in (Invoke-Expression $Command)) {
-            switch ($true) {
-                $Command.StartsWith("Get-CMApplication") {
+            switch -regex ($Command) {
+                "^Get-CMApplication.+" {
                     $AppMgmt = [xml]$item.SDMPackageXML | Select-Object -ExpandProperty AppMgmtDigest
                     $AppName = $AppMgmt.Application.DisplayInfo.FirstChild.Title
                     ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
@@ -188,7 +266,7 @@ Function Get-CMContent {
                             $GetAllPathsResult = Get-AllPaths -Path $_ -Cache $ShareCache -SiteServer $SiteServer
                             $obj = New-Object PSObject
                             Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Application"
-                            Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value "$($DeploymentType.AuthoringScopeId)/$($DeploymentType.LogicalName)"
+                            Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value ($DeploymentType | Select-Object -ExpandProperty LogicalName)
                             Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value "$($item.LocalizedDisplayName)::$($DeploymentType.Title.InnerText)"
                             Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath "$_"
                             Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
@@ -197,7 +275,7 @@ Function Get-CMContent {
                         $ShareCache = $GetAllPathsResult[0]
                     }
                 }
-                $Command.StartsWith("Get-CMDriver") { # I don't actually think it's possible for a driver to not have source path set
+                "^Get-CMDriver\s.+" { # I don't actually think it's possible for a driver to not have source path set
                     $SourcePath = $item.ContentSourcePath
                     $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer    
                     $obj = New-Object PSObject
@@ -211,7 +289,7 @@ Function Get-CMContent {
                 }
                 default {
                     # OS images and boot iamges are absolute paths to files
-                    If (($Command.StartsWith("Get-CMOperatingSystemImage")) -Or ($Command.StartsWith("Get-CMBootImage"))) {
+                    If (($Command -match ("^Get-CMOperatingSystemImage.+")) -Or ($Command -match ("^Get-CMBootImage.+"))) {
                         $SourcePath = Split-Path $item.PkgSourcePath
                     }
                     Else {
@@ -563,6 +641,7 @@ Function Set-CMDrive {
 }
 
 Write-CMLogEntry -Value "Starting" -Severity 1 -Component "Initilisation"
+$StartTime = Get-Date
 
 # Write all parameters passed to script to log
 ForEach($var in $PSBoundParameters.GetEnumerator()) {
@@ -667,7 +746,6 @@ $AllFolders | ForEach-Object -Begin {
     $NotUsed = $false
 
     If ((Check-FileSystemAccess -Path $Folder -Rights Read) -ne $true) {
-        Write-CMLogEntry -Value "$($Folder) : Access denied" -Severity 2 -Component "Undecided"
         $UsedBy.Add("Access denied") | Out-Null
         # Still continue anyway because we can still determine if it's an exact match or intermediate path of a content object
     }
@@ -728,17 +806,14 @@ $AllFolders | ForEach-Object -Begin {
         switch ($true) {
             ($UsedBy.count -gt 0) {
                 Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy) -join ', ')
-                Write-CMLogEntry -Value "$($Folder) : used by : $($UsedBy)" -Severity 1 -Component "Undecided"
                 break
             }
             ($IntermediatePath -eq $true) {
                 Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
-                Write-CMLogEntry -Value "$($Folder) : an intermediate folder" -Severity 1 -Component "Undecided"
                 break
             }
             ($NotUsed -eq $true) {
                 Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
-                Write-CMLogEntry -Value "$($Folder) : not used" -Severity 1 -Component "Undecided"
                 break
             }
         }
@@ -748,7 +823,40 @@ $AllFolders | ForEach-Object -Begin {
     }
 } -End {
 
-    Write-CMLogEntry -Value "Finished" -Severity 1 -Component "Exit"
-    return $Result
+    # Write $Result to log file
+    ForEach ($item in $Result) {
+        switch -regex ($item.UsedBy) {
+            "Access denied" {
+                $Severity = 2
+            }
+            default {
+                $Severity = 1
+            }
+        }
+        Write-CMLogEntry -Value ($item.Folder + ": " + $item.UsedBy) -Severity $Severity -Component "Undecided"
+    }
 
+    # Export $Result to file
+    If ($ObjectExport.IsPresent) {
+        try {
+            Write-CMLogEntry -Value "Exporting object PowerShell object" -Severity 1 -Component "Exit"
+            Export-Clixml -LiteralPath (($PSCommandPath | Split-Path -Parent) + "\" + ($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + ".xml") -InputObject $Result
+        }
+        catch {
+            Write-CMLogEntry -Value ("Failed to export PowerShell object: {0}" -f $error[0].Exception.Message) -Severity 3 -Component "Exit"
+        }
+    }
+
+    # Stop clock for runtime
+    $StopTime = (Get-Date) - $StartTime
+
+    # Write summary to log
+    Write-CMLogEntry -Value ("Total number of content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Total number of folders at {0}: {1}" -f $SourcesLocation, $AllFolders.count) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Total number of folders where access denied: {0}" -f ($Result | Where-Object { $_.UsedBy -like "Access denied*" } | Measure-Object).count) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Total number of folders unused: {0}" -f ($Result | Where-Object {$_.UsedBy -eq "Not used"} | Measure-Object).count) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Total runtime: {0}" -f $StopTime.ToString()) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value "Finished" -Severity 1 -Component "Exit"
+
+    return $Result
 }
