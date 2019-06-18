@@ -100,7 +100,8 @@ Param (
     [switch]$Log,
     [int32]$LogFileSize = 5MB,
     [int32]$NumOfRotatedLogs = 0,
-    [switch]$ObjectExport
+    [switch]$ObjectExport,
+    [int32]$Threads
 )
 
 <#
@@ -549,53 +550,6 @@ Function Start-AltFolderSearch {
     return $FolderList
 }
 
-Function Check-FileSystemAccess {
-    param
-    (
-        [string]$Path,
-        [System.Security.AccessControl.FileSystemRights]$Rights
-    )
-
-    # Thanks to Patrick in Windows Admins slack
-
-    [System.Security.Principal.WindowsIdentity]$currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
-    if (Test-Path $Path)
-    {
-        try
-        {
-            [System.Security.AccessControl.FileSystemSecurity]$security = (Get-Item -Path $Path -Force).GetAccessControl()
-            if ($security -ne $null)
-            {
-                [System.Security.AccessControl.AuthorizationRuleCollection]$rules = $security.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])
-                for([int]$i = 0; $i -lt $rules.Count; $i++)
-                {
-                    if (($currentIdentity.Groups.Contains($rules[$i].IdentityReference)) -or ($currentIdentity.User -eq $rules[$i].IdentityReference))
-                    {
-                        [System.Security.AccessControl.FileSystemAccessRule]$fileSystemRule = [System.Security.AccessControl.FileSystemAccessRule]$rules[$i]
-                        if ($fileSystemRule.FileSystemRights.HasFlag($Rights))
-                        {
-                            return $true
-                            break;
-                        }
-                    }
-                }
-            }
-            else
-            {
-                return $false
-            }
-        }
-        catch
-        {
-            return $false
-        }
-    }
-    else
-    {
-        return $false
-    }
-}
-
 Function Set-CMDrive {
     Param(
         [string]$SiteCode,
@@ -714,107 +668,167 @@ $AllFolders | ForEach-Object -Begin {
     If ($NoProgress -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status "Determinig unused folders" }
     Write-CMLogEntry -Value "Determinig unused folders" -Severity 1 -Component "Undecided"
     
-    $NumOfFolders = $AllFolders.count
+    $RSPool = [RunspaceFactory]::CreateRunspacePool(1, $Threads)
+    $RSPool.ApartmentState = "MTA"
+    $RSPool.Open()
 
-    # Forcing int data type because double/float for benefit of modulo write-progoress
-    If ($NumOfFolders -ge 150) { [int]$FolderInterval = $NumOfFolders * 0.01 } else { $FolderInterval = 2 }
-    $FolderCounter = 0
+    $RSResults = @()
+
+    $RSScriptBlock = {
+        Param (
+            [string]$RSFolder,
+            [System.Collections.ArrayList]$RSAllContentObjects
+        )
+
+        Function Check-FileSystemAccess {
+            param
+            (
+                [string]$Path,
+                [System.Security.AccessControl.FileSystemRights]$Rights
+            )
+        
+            # Thanks to Patrick in Windows Admins slack
+        
+            [System.Security.Principal.WindowsIdentity]$currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+            if (Test-Path $Path)
+            {
+                try
+                {
+                    [System.Security.AccessControl.FileSystemSecurity]$security = (Get-Item -Path $Path -Force).GetAccessControl()
+                    if ($security -ne $null)
+                    {
+                        [System.Security.AccessControl.AuthorizationRuleCollection]$rules = $security.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])
+                        for([int]$i = 0; $i -lt $rules.Count; $i++)
+                        {
+                            if (($currentIdentity.Groups.Contains($rules[$i].IdentityReference)) -or ($currentIdentity.User -eq $rules[$i].IdentityReference))
+                            {
+                                [System.Security.AccessControl.FileSystemAccessRule]$fileSystemRule = [System.Security.AccessControl.FileSystemAccessRule]$rules[$i]
+                                if ($fileSystemRule.FileSystemRights.HasFlag($Rights))
+                                {
+                                    return $true
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    else
+                    {
+                        return $false
+                    }
+                }
+                catch
+                {
+                    return $false
+                }
+            }
+            else
+            {
+                return $false
+            }
+        }
+
+        $obj = New-Object PSCustomObject
+        Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $RSFolder
+
+        [System.Collections.ArrayList]$UsedBy = @()
+        $IntermediatePath = $false
+        $ToSkip = $false
+        $NotUsed = $false
+
+        If ((Check-FileSystemAccess -Path $RSFolder -Rights Read) -ne $true) {
+            $UsedBy.Add("Access denied") | Out-Null
+            # Still continue anyway because we can still determine if it's an exact match or intermediate path of a content object
+        }
+
+        If ($RSFolder.StartsWith($ToSkip)) {
+            # Should probably rename $NotUsed to something more appropriate to truely reflect its meaning
+            # This is here so we don't walk through completely unused folder + sub folders
+            # Unused folders + sub folders are learnt for each loop of a new folder structure and thus each loop of all content objects
+            $NotUsed = $true
+        }
+        Else {
+
+            ForEach ($ContentObject in $RSAllContentObjects) {
+
+                switch($true) {
+                    ([string]::IsNullOrEmpty($ContentObject.SourcePath) -eq $true) {
+                        break
+                    }
+                    ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($RSFolder) -eq $env:COMPUTERNAME)) {
+                        # Package is local host to the site server
+                        $UsedBy.Add($ContentObject.Name) | Out-Null
+                        break
+                    }
+                    (($ContentObject.AllPaths.Keys -contains $RSFolder) -eq $true) {
+                        # By default the ContainsKey method ignores case
+                        $UsedBy.Add($ContentObject.Name) | Out-Null
+                        break
+                    }
+                    (($ContentObject.AllPaths.Keys -match [Regex]::Escape($RSFolder)).Count -gt 0) {
+                        # If any of the content object paths start with $RSFolder
+                        $IntermediatePath = $true
+                        break
+                    }
+                    ($ContentObject.AllPaths.Keys.Where{$RSFolder.StartsWith($_, "CurrentCultureIgnoreCase")}.Count -gt 0) {
+                        # If $RSFolder starts wtih any of the content object paths
+                        $IntermediatePath = $true
+                        break
+                    }
+                    default {
+                        $ToSkip = $RSFolder
+                        $NotUsed = $true
+                    }
+                }
+
+            }
+
+            switch ($true) {
+                ($UsedBy.count -gt 0) {
+                    Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy) -join ', ')
+                    break
+                }
+                ($IntermediatePath -eq $true) {
+                    Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
+                    break
+                }
+                ($NotUsed -eq $true) {
+                    Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
+                    break
+                }
+            }
+        }
+        return $obj
+    }
 
 } -Process {
 
-    $FolderCounter++
     $Folder = $_
 
-    If (($FolderCounter % $FolderInterval) -eq 0) { 
-        [int]$Percentage = ($FolderCounter / $NumOfFolders * 100)
-        If ($NoProgress -eq $false ) { Write-Progress -Id 2 -Activity "Looping through folders in $($SourcesLocation)" -PercentComplete $Percentage -Status "$($Percentage)% complete" -ParentId 1 }
-    }
-    
-    $obj = New-Object PSCustomObject
-    Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $Folder
+    $Runspace = [PowerShell]::Create()
+    $null = $Runspace.AddScript($RSScriptBlock)
+    $null = $Runspace.AddArgument($Folder)
+    $null = $Runspace.AddArgument($AllContentObjects)
 
-    [System.Collections.ArrayList]$UsedBy = @()
-    $IntermediatePath = $false
-    $ToSkip = $false
-    $NotUsed = $false
+    $Runspace.Runspacepool = $RSPool
 
-    If ((Check-FileSystemAccess -Path $Folder -Rights Read) -ne $true) {
-        $UsedBy.Add("Access denied") | Out-Null
-        # Still continue anyway because we can still determine if it's an exact match or intermediate path of a content object
-    }
+    $RSResults += [PSCustomObject]@{ Pipe = $Runspace; Status = $Runspace.BeginInvoke() }
 
-    If ($Folder.StartsWith($ToSkip)) {
-        # Should probably rename $NotUsed to something more appropriate to truely reflect its meaning
-        # This is here so we don't walk through completely unused folder + sub folders
-        # Unused folders + sub folders are learnt for each loop of a new folder structure and thus each loop of all content objects
-        $NotUsed = $true
-    }
-    Else {
-
-        [int]$ContentInterval = $AllContentObjects.count * 0.25
-        $ContentCounter = 0
-
-        ForEach ($ContentObject in $AllContentObjects) {
-
-            If ($ContentCounter % $ContentInterval -eq 0) {
-                If ($NoProgress -eq $false) { Write-Progress -Id 3 -Activity "Looping through content objects" -PercentComplete ($ContentCounter / $AllContentObjects.count * 100) -ParentId 2 }
-            }
-
-            $ContentCounter++
-            
-            # Whatever you do, ignore case!
-
-            switch($true) {
-                ([string]::IsNullOrEmpty($ContentObject.SourcePath) -eq $true) {
-                    break
-                }
-                ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($Folder) -eq $env:COMPUTERNAME)) {
-                    # Package is local host to the site server
-                    $UsedBy.Add($ContentObject.Name) | Out-Null
-                    break
-                }
-                (($ContentObject.AllPaths.Keys -contains $Folder) -eq $true) {
-                    # By default the ContainsKey method ignores case
-                    $UsedBy.Add($ContentObject.Name) | Out-Null
-                    break
-                }
-                (($ContentObject.AllPaths.Keys -match [Regex]::Escape($Folder)).Count -gt 0) {
-                    # If any of the content object paths start with $Folder
-                    $IntermediatePath = $true
-                    break
-                }
-                ($ContentObject.AllPaths.Keys.Where{$Folder.StartsWith($_, "CurrentCultureIgnoreCase")}.Count -gt 0) {
-                    # If $Folder starts wtih any of the content object paths
-                    $IntermediatePath = $true
-                    break
-                }
-                default {
-                    $ToSkip = $Folder
-                    $NotUsed = $true
-                }
-            }
-
-        }
-
-        switch ($true) {
-            ($UsedBy.count -gt 0) {
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy) -join ', ')
-                break
-            }
-            ($IntermediatePath -eq $true) {
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
-                break
-            }
-            ($NotUsed -eq $true) {
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
-                break
-            }
-        }
-    
-        $Result.Add($obj) | Out-Null
-
-    }
 } -End {
+
+    Write-Host "Waiting..." -NoNewline
+    
+    while ($RSResults.Status -ne $null) {
+        $completed = $RSResults | Where-Object { $_.Status.IsCompleted -eq $true }
+        ForEach ($item in $completed) {
+            $Result.Add($item.Pipe.EndInvoke($item.Status)) | Out-Null
+            $item.Status = $null
+        }
+    }
+
+    Write-Host "All jobs complete"
+
+    $RSPool.Close()
+    $RSPool.Dispose()
 
     # Write $Result to log file
     ForEach ($item in $Result) {
