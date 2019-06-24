@@ -810,10 +810,11 @@ Function Set-CMDrive {
     )
 
     # Import the ConfigurationManager.psd1 module 
-    if((Get-Module ConfigurationManager) -eq $null) {
+    If((Get-Module ConfigurationManager) -eq $null) {
         try {
-            Import-Module "{0}\..\ConfigurationManager.psd1" -f $ENV:SMS_ADMIN_UI_PATH
-        } catch {
+            Import-Module ("{0}\..\ConfigurationManager.psd1" -f $ENV:SMS_ADMIN_UI_PATH)
+        }
+        catch {
             throw "Failed to import Configuration Manager module"
         }
     }
@@ -829,7 +830,8 @@ Function Set-CMDrive {
         # Verify given sitecode
         If((Get-CMSite -SiteCode $SiteCode | Select-Object -ExpandProperty SiteCode) -ne $SiteCode) { throw }
 
-    } catch {
+    } 
+    catch {
         If((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue) -ne $null) {
             Set-Location $Path
             Remove-PSDrive -Name $SiteCode -Force
