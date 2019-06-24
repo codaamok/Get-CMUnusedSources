@@ -298,7 +298,7 @@ Function Write-CMLogEntry {
                         $false {
                             # Rename log to +1
                             $Source = Join-Path -Path $Folder -ChildPath $Log
-                            $NewFileName = $Log -replace "_([0-9]+)\.lo_$",("_{0}.lo_" -f $LogFileNumber+1)
+                            $NewFileName = $Log -replace "_([0-9]+)\.lo_$",("_{0}.lo_" -f ($LogFileNumber+1))
                             $Destination = Join-Path -Path $Folder -ChildPath $NewFileName
                             [System.IO.File]::Copy($Source, $Destination, $true)
                         }
