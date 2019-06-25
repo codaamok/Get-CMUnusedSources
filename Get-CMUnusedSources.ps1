@@ -6,15 +6,13 @@ Get-CMUnusedSources will tell you what folders are not used by ConfigMgr in a gi
 Check out https://www.cookadam.co.uk/get-cmunusedsources and https://github.com/codaamok/Get-CMUnusedSources.
 
 .PARAMETER SourcesLocation
-The path to the directory you store your ConfigMgr sources. Can be a UNC or local path.
-Must be a valid path that you have read access to.
+The path to the directory you store your ConfigMgr sources. Can be a UNC or local path. Must be a valid path that you have read access to.
 
 .PARAMETER SiteCode
 The site code of the ConfigMgr site you wish to query for content objects.
 
 .PARAMETER SiteServer
-The site server of the given ConfigMgr site code.
-The server must be reachable over a network.
+The site server of the given ConfigMgr site code. The server must be reachable over a network.
 
 .PARAMETER Packages
 Specify this switch to include Packages within the search to determine unused content on disk.
@@ -48,30 +46,22 @@ Specify this if you suspect there are issue with the default mechanism of gather
 Specify this to disable use of Write-Progress.
 
 .PARAMETER Log
-Specify this to enable logging.
-The log file(s) will be saved to the same directory as this script with a name of <scriptname>_<datetime>.log. Rolled log files will follow a naming convention of <filename>_1.lo_ where the int increases for each rotation.
+Specify this to enable logging. The log file(s) will be saved to the same directory as this script with a name of <scriptname>_<datetime>.log. Rolled log files will follow a naming convention of <filename>_1.lo_ where the int increases for each rotation.
 
 .PARAMETER LogFileSize
-Set the maximum size you want for each rolled over log file. This is only applicable if NumOfRotatedLogs is greater than 0.
-Default value is 5MB. The unit of measurement is bytes however you can specify units such as KB, MB etc.
+Set the maximum size you want for each rolled over log file. This is only applicable if NumOfRotatedLogs is greater than 0. Default value is 5MB. The unit of measurement is bytes however you can specify units such as KB, MB etc.
 
 .PARAMETER NumOfRotatedLogs
-Set the maximum number of log files you wish to keep.
-Default value is 5MB. Specify 0 for unlimited.
+Set the maximum number of log files you wish to keep. Default value is 5MB. Specify 0 for unlimited.
 
 .PARAMETER ObjectExport
-Specify this option if you wish to export the PowerShell result object to an XML file.
-The XML file be saved to the same directory as this script with a name of <scriptname>_<datetime>.xml. It can easily be reimported using Import-Clixml cmdlet.
+Specify this option if you wish to export the PowerShell result object to an XML file. The XML file be saved to the same directory as this script with a name of <scriptname>_<datetime>.xml. It can easily be reimported using Import-Clixml cmdlet.
 
 .PARAMETER HtmlReport
-Specify this option to enable the generation for a HTML report of the result. Doing this will force you to have the PSWriteHtml module installed.
-For more information on PSWriteHTML: https://github.com/EvotecIT/PSWriteHTML
-The HTML file will be saved to the same directory as this script with a name of <scriptname>_<datetime>.html.
+Specify this option to enable the generation for a HTML report of the result. Doing this will force you to have the PSWriteHtml module installed. For more information on PSWriteHTML: https://github.com/EvotecIT/PSWriteHTML. The HTML file will be saved to the same directory as this script with a name of <scriptname>_<datetime>.html.
 
 .PARAMETER Threads
-Set the number of threads you wish to use for concurrent processing of this script.
-Default value is number of processes from env var NUMBER_OF_PROCESSORS minus 1. 
-A validation is in place to prevent you from going above NUMBER_OF_PROCESSORS+1. If you want to do that, you can. Remove the ValidateScript block on the parameter. I've put this place just in case you you run this on your already busy site server.
+Set the number of threads you wish to use for concurrent processing of this script. Default value is number of processes from env var NUMBER_OF_PROCESSORS minus 1. 
 
 .INPUTS
 
@@ -156,13 +146,6 @@ Param (
     [Parameter(Mandatory=$false, HelpMessage="Generate HTML report of the result.")]
     [switch]$HtmlReport,
     [Parameter(Mandatory=$false, HelpMessage="Number of threads to use for execution.")]
-    [ValidateScript({
-        If($_ -gt ($env:NUMBER_OF_PROCESSORS+1)) {
-            throw "If you really want to use this many threads, you'll have to modify the script yourself to allow you."
-        } Else {
-            return $true
-        }
-    })]
     [int32]$Threads = [int]$env:NUMBER_OF_PROCESSORS-1
 )
 
@@ -177,7 +160,8 @@ TODO:
         - Begin Process End blocks, maybe?
         - How can I validate the results?
         - Can get-allpaths use Join-Path in any way?
-
+        - Exclude folders in get-childitem?
+        - publish to technet/github/psgallery
 
     Test plan:
         - content objects with:
@@ -1107,8 +1091,8 @@ $AllFolders | ForEach-Object -Begin {
     # Write summary to log
     Write-CMLogEntry -Value ("Total number of content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Total number of folders at {0}: {1}" -f $SourcesLocation, $AllFolders.count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Total number of folders where access denied: {0}" -f ($Result | Where-Object { $_.UsedBy -like "Access denied*" } | Measure-Object).count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Total number of folders unused: {0}" -f ($Result | Where-Object {$_.UsedBy -eq "Not used"} | Measure-Object).count) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Total number of folders where access denied: {0}" -f ($Result | Where-Object { $_.UsedBy -like "Access denied*" } | Measure-Object | Select-OBject -ExpandProperty Count) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Total number of folders unused: {0}" -f ($Result | Where-Object {$_.UsedBy -eq "Not used"} | Measure-Object | Select-OBject -ExpandProperty Count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Total runtime: {0}" -f $StopTime.ToString()) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value "Finished" -Severity 1 -Component "Exit"
 
