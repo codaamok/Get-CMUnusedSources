@@ -1,5 +1,9 @@
 # Get-CMUnusedSources
 
+## Table of contents
+
+<!-- TOC -->autoauto- [Get-CMUnusedSources](#get-cmunusedsources)auto    - [Table of contents](#table-of-contents)auto    - [Short Description](#short-description)auto    - [Requirements](#requirements)auto    - [Getting started](#getting-started)auto    - [Default conditions](#default-conditions)auto    - [What can it do](#what-can-it-do)auto    - [Examples](#examples)auto    - [Runtime stats](#runtime-stats)auto    - [Process overview](#process-overview)auto        - [Example output](#example-output)auto    - [Parameters](#parameters)auto        - [-SourcesLocation (mandatory)](#-sourceslocation-mandatory)auto        - [-SiteCode (mandatory)](#-sitecode-mandatory)auto        - [-SiteServer (mandatory)](#-siteserver-mandatory)auto        - [-Packages](#-packages)auto        - [-Applications](#-applications)auto        - [-Drivers](#-drivers)auto        - [-DriverPackages](#-driverpackages)auto        - [-OSImages](#-osimages)auto        - [-OSUpgradeImages](#-osupgradeimages)auto        - [-BootImages](#-bootimages)auto        - [-DeploymentPackages](#-deploymentpackages)auto        - [-AltFolderSearch](#-altfoldersearch)auto        - [-NoProgress](#-noprogress)auto        - [-Log](#-log)auto        - [-LogFileSize](#-logfilesize)auto        - [-NumOfRotatedLogs](#-numofrotatedlogs)auto        - [-ObjectExport](#-objectexport)auto        - [-HtmlReport](#-htmlreport)auto        - [-Threads](#-threads)auto    - [Author](#author)auto    - [License](#license)auto    - [Acknowledgements](#acknowledgements)autoauto<!-- /TOC -->
+
 ## Short Description
 
 A PowerShell script that will tell you what folders are not used by System Center Configuration Manager content objects in a given path. This is useful if your storage is getting full and you need a way to identify what on disk is good to go.
