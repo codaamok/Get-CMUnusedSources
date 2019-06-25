@@ -2,9 +2,7 @@
 
 ## Table of contents
 
-<!-- TOC -->autoauto- [Get-CMUnusedSources](#get-cmunusedsources)auto    - [Table of contents](#table-of-contents)auto    - [Short Description](#short-description)auto    - [Requirements](#requirements)auto    - [Getting started](#getting-started)auto    - [Default conditions](#default-conditions)auto    - [What can it do](#what-can-it-do)auto    - [Examples](#examples)auto    - [Runtime stats](#runtime-stats)auto    - [Process overview](#process-overview)auto        - [Example output](#example-output)auto    - [Parameters](#parameters)auto        - [-SourcesLocation (mandatory)](#-sourceslocation-mandatory)auto        - [-SiteCode (mandatory)](#-sitecode-mandatory)auto        - [-SiteServer (mandatory)](#-siteserver-mandatory)auto        - [-Packages](#-packages)auto        - [-Applications](#-applications)auto        - [-Drivers](#-drivers)auto        - [-DriverPackages](#-driverpackages)auto        - [-OSImages](#-osimages)auto        - [-OSUpgradeImages](#-osupgradeimages)auto        - [-BootImages](#-bootimages)auto        - [-DeploymentPackages](#-deploymentpackages)auto        - [-AltFolderSearch](#-altfoldersearch)auto        - [-NoProgress](#-noprogress)auto        - [-Log](#-log)auto        - [-LogFileSize](#-logfilesize)auto        - [-NumOfRotatedLogs](#-numofrotatedlogs)auto        - [-ObjectExport](#-objectexport)auto        - [-HtmlReport](#-htmlreport)auto        - [-Threads](#-threads)auto    - [Author](#author)auto    - [License](#license)auto    - [Acknowledgements](#acknowledgements)autoauto<!-- /TOC -->
-
-## Short Description
+## Description
 
 A PowerShell script that will tell you what folders are not used by System Center Configuration Manager content objects in a given path. This is useful if your storage is getting full and you need a way to identify what on disk is good to go.
 
@@ -234,14 +232,22 @@ Set the number of threads you wish to use for concurrent processing of this scri
 
 ## Author
 
+Adam Cook
+
+Twitter: [@codaamok](https://twitter.com/codaamok)
+
+Website: https://www.cookadam.co.uk
+
 ## License
+
+Please read the LICENSE file provided.
 
 ## Acknowledgements
 
 Big thanks to folks in [Windows Admins slack](https://slofile.com/slack/winadmins):
 
-Cody Mathis ([@codymathis123](https://github.com/CodyMathis123))
-Chris Kibble ([@ChrisKibble](https://github.com/ChrisKibble))
-Chris Dent ([@idented-automation](https://github.com/indented-automation))
-Kevin Crouch ([@PsychoData](https://github.com/PsychoData))
-Patrick (the dude who wrote [MakeMeAdmin](https://makemeadmin.com/))
+- Cody Mathis ([@codymathis123](https://github.com/CodyMathis123))
+- Chris Kibble ([@ChrisKibble](https://github.com/ChrisKibble))
+- Chris Dent ([@idented-automation](https://github.com/indented-automation))
+- Kevin Crouch ([@PsychoData](https://github.com/PsychoData))
+- Patrick (the guy who wrote [MakeMeAdmin](https://makemeadmin.com/))
