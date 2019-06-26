@@ -67,7 +67,7 @@ This script can be run from your desktop and makes no changes. It's purely for r
 ---
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -LogFileSize 2MB -ObjectExport -HtmlReport -Threads 2
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -LogFileSize 2MB -ExportReturnObject -HtmlReport -Threads 2
 ```
 
 It will gather all content objects relevant to site code `XYZ` and all folders under `\\server\folder`. A log file will be created in the same directory as the script and rolled over when it reaches 2MB, with no limit on number of rotated logs to keep. When finished, the object returned by the script will be exported and also the HTML report too. 2 threads will be used.
@@ -203,9 +203,13 @@ Set the maximum size you want for each rolled over log file. This is only applic
 
 Set the maximum number of log files you wish to keep. Default value is 5MB. Specify 0 for unlimited.
 
-### -ObjectExport
+### -ExportReturnObject
 
-Specify this option if you wish to export the PowerShell result object to an XML file. The XML file be saved to the same directory as this script with a name of `<scriptname>_<datetime>.xml`. It can easily be reimported using Import-Clixml cmdlet.
+Specify this option if you wish to export the PowerShell result object to an XML file. The XML file be saved to the same directory as this script with a name of `<scriptname>_<datetime>_result.xml`. It can easily be reimported using Import-Clixml cmdlet.
+
+### -ExportCMContentObjects
+
+Specify this option if you wish to export all ConfigMgr content objects to an XML file. The XML file be saved to the same directory as this script with a name of `<scriptname>_<datetime>_cmobjects.xml`. It can easily be reimported using Import-Clixml cmdlet.
 
 ### -HtmlReport
 
