@@ -1,6 +1,8 @@
 # Get-CMUnusedSources
 
-## Short Description
+## Table of contents
+
+## Description
 
 A PowerShell script that will tell you what folders are not used by System Center Configuration Manager content objects in a given path. This is useful if your storage is getting full and you need a way to identify what on disk is good to go.
 
@@ -27,7 +29,7 @@ The script returns an array of PSObjects where each PSObject has two properties:
 
 - ConfigMgr console installed
 - PowerShell 5.1 or newer
-- [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) module installed (only if you specify ### -HtmlReport switch)
+- [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) module installed (only if you specify `-HtmlReport` switch)
 
 ## Getting started
 
@@ -49,22 +51,20 @@ Running the script without anything other than the mandatory parameters will do 
 - No HTML report
 - Number of threads will be number of cores minus 1
 
-## What can it do?
+## What can it do
 
 This script can be run from your desktop and makes no changes. It's purely for reporting. It returns an exportable PowerShell object, because what good is a script that's for reporting where you can't actually do anything with the results? Finally, you can optional create a HTML report where you can then export to CSV/PDF/XSLX.
 
 - The script returns the results as an array of PSObjects. I find it useful when a script that's used for reporting returns something that I can immediately do _something_ with.
-- ### -SourcesLocation can be a UNC or local path. Do not worry about the MAX_PATH limit as the script prefixes what you give with `\\?\UNC\..` where the MAX_PATH limit is 32767 - [more info](https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file#maximum-path-length-limitation).
+- -SourcesLocation can be a UNC or local path. Do not worry about the MAX_PATH limit as the script prefixes what you give with `\\?\UNC\..` where the MAX_PATH limit is 32767 - [more info](https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file#maximum-path-length-limitation).
 - You can filter the content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Surpress the use of Write-Progress.
 - Output a log file, enable log rotation, set a maximum log file size and how many rotated log files to keep.
 - Export the array that's returned by the script to file. You can reimport it later using `Import-Clixml`.
-- Export the result to HTML, and because thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX.
+- Export the result to HTML, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX.
 - The script uses runspaces so you can control how many threads are concurrently used.
 
 ## Examples
-
----
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -LogFileSize 2MB -ExportReturnObject -HtmlReport -Threads 2
@@ -74,15 +74,30 @@ It will gather all content objects relevant to site code `XYZ` and all folders u
 
 ---
 
+```powershell
+PS C:\>
+```
+
+Another example here
+
+---
+
+```powershell
+PS C:\>
+```
+
+Another example here
+
 ## Runtime stats
 
 6 threads on an 8 core VM with 4GB RAM, x many content objects and x many folders:
+_leave -htmlreport out_
 
 ## Process overview
 
-It works by gathering all (or selective) content objects within a hierarchy by site code using the ConfigMgr cmdlets. It also recursively gathers all folders under a given path. 
+The process begins by by gathering all (or selective) content objects within a hierarchy by site code using the ConfigMgr cmdlets. It also recursively gathers all folders under a given path.
 
-The source path for each content object is observed and manipulated to create every possible valid permutation. For example, say PackageABC1 has a source path `\\server\Applications$\7zip\x64`. The script will create an AllPaths property with a list like this:
+The source path for each content object is manipulated to create every possible valid permutation. For example, say PackageABC1 has a source path `\\server\Applications$\7zip\x64`. The script will create an AllPaths property with a list like this:
 
 ```text
 \\192.168.175.11\Applications$\7zip\x64
@@ -99,7 +114,7 @@ F:\Applications\7zip\x64
 
 In the above example, the script discovered the local path for the `Applicatons$` share was `F:\Applications` and that `SomeOtherSharedFolder$` was another share that also reoslves to the same local path. This path permutation enables the script to identify used folders that could use different absolute paths but resolve to the same folder.
 
-Once all the folders and ConfigrMgr content objects have been gathered, to iterates through each folder, and for each folder iterates over all content objects to determine if said folder is used. This process builds an array of PSObjects and returns said array once complete.
+Once all the folders and ConfigrMgr content objects have been gathered, it begins iterating through through each folder, and for each folder it iterates over all content objects to determine if said folder is used. This process builds an array of PSObjects and returns said array once complete.
 
 ### Example output
 
@@ -119,18 +134,18 @@ Total runtime: 00:00:07.2891577
 
 PS C:\> $result | Select -First 10
 
-Folder                                      UsedBy
-------                                      ------
-\\filderserver\Applications$                An intermediate folder (sub or parent folder)
-\\filderserver\Applications$\.NET3.5        Not used
-\\filderserver\Applications$\.NET3.5SP1     Not used
-\\filderserver\Applications$\7zip           An intermediate folder (sub or parent folder)
-\\filderserver\Applications$\7zip\uninstall 7-Zip 19.00::7-Zip 19.00 - Windows Installer (*.msi file)
-\\filderserver\Applications$\7zip\x64       7-Zip 19.00::7-Zip 19.00 (x64 edition) - Windows Installer (*.msi file)
-\\filderserver\Applications$\7zip\x86       Not used
-\\filderserver\Applications$\chrome         An intermediate folder (sub or parent folder)
-\\filderserver\Applications$\chrome\x64     Chrome 73.0.3683.103::Google Chrome x64
-\\filderserver\Applications$\chrome\x86     Chrome 73.0.3683.103::Google Chrome x86
+Folder                                    UsedBy
+------                                    ------
+\\fileserver\Applications$                An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\.NET3.5        Not used
+\\fileserver\Applications$\.NET3.5SP1     Not used
+\\fileserver\Applications$\7zip           An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\7zip\uninstall 7-Zip 19.00::7-Zip 19.00 - Windows Installer (*.msi file)
+\\fileserver\Applications$\7zip\x64       7-Zip 19.00::7-Zip 19.00 (x64 edition) - Windows Installer (*.msi file)
+\\fileserver\Applications$\7zip\x86       Not used
+\\fileserver\Applications$\chrome         An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\chrome\x64     Chrome 73.0.3683.103::Google Chrome x64
+\\fileserver\Applications$\chrome\x86     Chrome 73.0.3683.103::Google Chrome x86
 ```
 
 ## Parameters
@@ -217,18 +232,26 @@ Specify this option to enable the generation for a HTML report of the result. Do
 
 ### -Threads
 
-Set the number of threads you wish to use for concurrent processing of this script. Default value is number of processes from env var NUMBER_OF_PROCESSORS minus 1. 
+Set the number of threads you wish to use for concurrent processing of this script. Default value is number of processes from env var NUMBER_OF_PROCESSORS minus 1.
 
 ## Author
 
+Adam Cook
+
+Twitter: [@codaamok](https://twitter.com/codaamok)
+
+Website: https://www.cookadam.co.uk
+
 ## License
+
+Please read the LICENSE file provided.
 
 ## Acknowledgements
 
 Big thanks to folks in [Windows Admins slack](https://slofile.com/slack/winadmins):
 
-Cody Mathis ([@codymathis123](https://github.com/CodyMathis123))
-Chris Kibble ([@ChrisKibble](https://github.com/ChrisKibble))
-Chris Dent ([@idented-automation](https://github.com/indented-automation))
-Kevin Crouch ([@PsychoData](https://github.com/PsychoData))
-Patrick (the dude who wrote [MakeMeAdmin](https://makemeadmin.com/))
+- Cody Mathis ([@codymathis123](https://github.com/CodyMathis123))
+- Chris Kibble ([@ChrisKibble](https://github.com/ChrisKibble))
+- Chris Dent ([@idented-automation](https://github.com/indented-automation))
+- Kevin Crouch ([@PsychoData](https://github.com/PsychoData))
+- Patrick (the guy who wrote [MakeMeAdmin](https://makemeadmin.com/))
