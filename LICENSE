@@ -1,3 +1,9 @@
+A function named "Measure-ChildItem" within "Get-CMUnusedSources.ps1" is not covered under the license below. It originates from a project released under MIT so please consider all code other than this function released as per terms below.
+Full credit for said function to Chris Dent. Links:
+- https://github.com/steviecoaster/PSSysadminToolkit/blob/Dev/Public/Measure-ChildItem.ps1
+- http://www.opensource.org/licenses/MIT
+
+
 GNU GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
 
