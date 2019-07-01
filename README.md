@@ -56,7 +56,7 @@ Running the script without anything other than the mandatory parameters will do 
 This script can be run from your desktop and makes no changes. It's purely for reporting. It returns an exportable PowerShell object, because what good is a script that's for reporting where you can't actually do anything with the results? Finally, you can optional create a HTML report where you can then export to CSV/PDF/XSLX.
 
 - The script returns the results as an array of PSObjects. I find it useful when a script that's used for reporting returns something that I can immediately do _something_ with.
-- -SourcesLocation can be a UNC or local path. Do not worry about the MAX_PATH limit as the script prefixes what you give with `\\?\UNC\..` where the MAX_PATH limit is 32767 - [more info](https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file#maximum-path-length-limitation).
+- -SourcesLocation can be a UNC or local path. Do not worry about the MAX_PATH limit as the script prefixes what you give with `\\?\..` where the MAX_PATH limit is 32767 - [more info](https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file#maximum-path-length-limitation).
 - You can filter the content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Surpress the use of Write-Progress.
 - Output a log file, enable log rotation, set a maximum log file size and how many rotated log files to keep.
@@ -216,15 +216,15 @@ Set the maximum size you want for each rolled over log file. This is only applic
 
 ### -NumOfRotatedLogs
 
-Set the maximum number of log files you wish to keep. Default value is 5MB. Specify 0 for unlimited.
+Set the maximum number of log files you wish to keep. Default value is 5MB. Specify `0` for unlimited.
 
 ### -ExportReturnObject
 
-Specify this option if you wish to export the PowerShell result object to an XML file. The XML file be saved to the same directory as this script with a name of `<scriptname>_<datetime>_result.xml`. It can easily be reimported using Import-Clixml cmdlet.
+Specify this option if you wish to export the PowerShell result object to an XML file. The XML file be saved to the same directory as this script with a name of `<scriptname>_<datetime>_result.xml`. It can easily be reimported using `Import-Clixml` cmdlet.
 
 ### -ExportCMContentObjects
 
-Specify this option if you wish to export all ConfigMgr content objects to an XML file. The XML file be saved to the same directory as this script with a name of `<scriptname>_<datetime>_cmobjects.xml`. It can easily be reimported using Import-Clixml cmdlet.
+Specify this option if you wish to export all ConfigMgr content objects to an XML file. The XML file be saved to the same directory as this script with a name of `<scriptname>_<datetime>_cmobjects.xml`. It can easily be reimported using `Import-Clixml` cmdlet.
 
 ### -HtmlReport
 
@@ -232,7 +232,7 @@ Specify this option to enable the generation for a HTML report of the result. Do
 
 ### -Threads
 
-Set the number of threads you wish to use for concurrent processing of this script. Default value is number of processes from env var NUMBER_OF_PROCESSORS minus 1.
+Set the number of threads you wish to use for concurrent processing of this script. Default value is number of processes from environment variable `NUMBER_OF_PROCESSORS` minus 1.
 
 ## Author
 
