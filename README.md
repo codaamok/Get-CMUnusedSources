@@ -53,7 +53,7 @@ Running the script without anything other than the mandatory parameters will do 
 
 ## What can it do
 
-This script can be run from your desktop and makes no changes. It's purely for reporting. It returns an exportable PowerShell object, because what good is a script that's for reporting where you can't actually do anything with the results? Finally, you can optional create a HTML report where you can then export to CSV/PDF/XSLX.
+This script can be run from your desktop and makes no changes. It's purely for reporting. It returns an exportable PowerShell object and optionally create a HTML report where you can then export to CSV/PDF/XSLX.
 
 - The script returns the results as an array of PSObjects. I find it useful when a script that's used for reporting returns something that I can immediately do _something_ with.
 - -SourcesLocation can be a UNC or local path. Do not worry about the MAX_PATH limit as the script prefixes what you give with `\\?\..` where the MAX_PATH limit is 32767 - [more info](https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file#maximum-path-length-limitation).
@@ -122,15 +122,16 @@ Once all the folders and ConfigrMgr content objects have been gathered, it begin
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Applications
 Starting
 Gathering folders: \\fileserver\Applications$
-Number of folders: 39
+Number of folders: 40
 Gathering content objects: Application
 Number of content objects: 16
-Determinig unused folders, using 2 threads
-Total number of content objects: 16
-Total number of folders at \\fileserver\Applications$: 39
-Total number of folders where access denied: 0
-Total number of folders unused: 10
-Total runtime: 00:00:07.2891577
+Determining unused folders, using 2 threads
+Content objects: 16
+Folders at \\sccm\applications$: 40
+Folders where access denied: 0
+Folders unused: 11
+Disk space in "\\sccm\applications$" not used by ConfigMgr content objects (Application): 4.2 MB
+Runtime: 00:00:07.2891577
 
 PS C:\> $result | Select -First 10
 

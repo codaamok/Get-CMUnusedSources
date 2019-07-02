@@ -148,12 +148,7 @@ TODO:
         - Exclude folders parameter in get-childitem?
         - publish to technet/github/psgallery
         - delete log entries for $result??
-        - use runspaces for get-cmcontent
-        - consider using runspaces for get-allfolders
-        - don't use begin process end for everything but maybe for some where it makes sense, e.g. get-cmcontent
-        - still have a go at join-path, it'll improve readability
         - local paths in html report for content objects source path
-
 
     Test plan:
         - content objects with:
@@ -168,11 +163,6 @@ TODO:
             - for html report, test all scenarios
         - validate results
             - write up demoing -exportcmcontentobjects 
-
-    What to put in report:
-        - Total space consumed by unused folders (robocopy?)
-        - Content objects with source path that no longer exists
-        - All unused folders
 #>
 
 <#
@@ -196,6 +186,8 @@ $PSDefaultParameterValues["New-HTMLTable:FixedHeader"]=$true
 $PSDefaultParameterValues["New-HTMLTable:DisablePaging"]=$true
 $PSDefaultParameterValues["New-HTMLTable:ScrollX"]=$true
 $PSDefaultParameterValues["New-HTMLTable:Buttons"]=("copyHtml5", "excelHtml5", "csvHtml5", "pdfHtml5")
+$PSDefaultParameterValues["New-HTMLTable:Filtering"]=$true
+$PSDefaultParameterValues["New-HTMLTable:FilteringLocation"]="Top"
 
 <#
     Define functions
@@ -332,6 +324,7 @@ Function Write-CMLogEntry {
 }
 
 Function Get-CMContent {
+    [CmdletBinding()]
     <#
     .SYNOPSIS
     Get all ConfigMgr objects that can hold content, i.e. content objects.
@@ -343,104 +336,111 @@ Function Get-CMContent {
     System.Object.ArrayList where each element will be a content object of System.Object.PSCustomObject.
     #>
     Param(
-        [array]$Commands,
+        [Parameter(Mandatory=$true,ValueFromPipeline=$true)]
+        [string[]]$Commands,
+        [Parameter(Mandatory=$true,ValueFromPipeline=$false)]
         [string]$SiteServer,
+        [Parameter(Mandatory=$true,ValueFromPipeline=$false)]
         [string]$SiteCode
     )
+    Begin {
+        [System.Collections.ArrayList]$AllContent = @()
+        [hashtable]$ShareCache = @{}
+    }
+    Process {
+        ForEach ($Command in $Commands) {
 
-    [System.Collections.ArrayList]$AllContent = @()
-    [hashtable]$ShareCache = @{}
+            Write-CMLogEntry -Value ("Getting: {0}" -f $Command -replace "Get-CM") -Severity 1 -Component "GatherContentObjects"
 
-    ForEach ($Command in $Commands) {
+            # Filter by site code
+            $Command = $Command + " | Where-Object SourceSite -eq `"{0}`"" -f $SiteCode
 
-        Write-CMLogEntry -Value ("Getting: {0}" -f $Command -replace "Get-CM") -Severity 1 -Component "GatherContentObjects"
+            ForEach ($item in (Invoke-Expression $Command)) {
+                switch -regex ($Command) {
+                    "^Get-CMApplication.+" {
+                        $AppMgmt = [xml]$item.SDMPackageXML | Select-Object -ExpandProperty AppMgmtDigest
+                        ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
+                            $SourcePaths = $DeploymentType.Installer.Contents.Content.Location
+                            # Using ForEach-Object because even if $SourcePaths is null, it will iterate null once which is ideal here where deployment types can have no source path.
+                            # Also, A deployment type can have more than 1 source path: for install and uninstall paths
+                            $SourcePaths | ForEach-Object {
+                                $SourcePath = $_
 
-        # Filter by site code
-        $Command = $Command + " | Where-Object SourceSite -eq `"{0}`"" -f $SiteCode
+                                # Get every possible path
+                                $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer
 
-        ForEach ($item in (Invoke-Expression $Command)) {
-            switch -regex ($Command) {
-                "^Get-CMApplication.+" {
-                    $AppMgmt = [xml]$item.SDMPackageXML | Select-Object -ExpandProperty AppMgmtDigest
-                    ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
-                        $SourcePaths = $DeploymentType.Installer.Contents.Content.Location
-                        # Using ForEach-Object because even if $SourcePaths is null, it will iterate null once which is ideal here where deployment types can have no source path.
-                        # Also, A deployment type can have more than 1 source path: for install and uninstall paths
-                        $SourcePaths | ForEach-Object {
-                            $SourcePath = $_
+                                # Create content object PSObject with needed properties and add to array
+                                $obj = New-Object PSObject
+                                Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Application"
+                                Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value ($DeploymentType | Select-Object -ExpandProperty LogicalName)
+                                Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value ("{0}::{1}" -f $item.LocalizedDisplayName,$DeploymentType.Title.InnerText)
+                                Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
+                                Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathFlag -Value (Test-FileSystemAccess -Path $SourcePath -Rights Read)
+                                Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
+                                $AllContent.Add($obj) | Out-Null
+                            }
 
-                            # Get every possible path
-                            $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer
+                            # Maintaining cache of shared folders for servers encountered so far
+                            $ShareCache = $GetAllPathsResult[0]
 
-                            # Create content object PSObject with needed properties and add to array
-                            $obj = New-Object PSObject
-                            Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Application"
-                            Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value ($DeploymentType | Select-Object -ExpandProperty LogicalName)
-                            Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value ("{0}::{1}" -f $item.LocalizedDisplayName,$DeploymentType.Title.InnerText)
-                            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                            Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathFlag -Value (Test-FileSystemAccess -Path $SourcePath -Rights Read)
-                            Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                            $AllContent.Add($obj) | Out-Null
+                            Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.AllPaths.Keys -join ",") -Severity 1 -Component "GatherContentObjects"
                         }
+                    }
+                    "^Get-CMDriver\s.+" { 
+                        $SourcePath = $item.ContentSourcePath
+                        # Get every possible path
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer 
+                        
+                        # Create content object PSObject with needed properties and add to array
+                        $obj = New-Object PSObject
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Driver"
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.CI_ID
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.LocalizedDisplayName
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathFlag -Value (Test-FileSystemAccess -Path $SourcePath -Rights Read)
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
+                        $AllContent.Add($obj) | Out-Null
 
                         # Maintaining cache of shared folders for servers encountered so far
                         $ShareCache = $GetAllPathsResult[0]
 
                         Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.AllPaths.Keys -join ",") -Severity 1 -Component "GatherContentObjects"
                     }
+                    default {
+                        # OS images and boot iamges are absolute paths to files
+                        If (($Command -match ("^Get-CMOperatingSystemImage.+")) -Or ($Command -match ("^Get-CMBootImage.+"))) {
+                            $SourcePath = Split-Path $item.PkgSourcePath
+                        }
+                        Else {
+                            $SourcePath = $item.PkgSourcePath
+                        }
+                        
+                        $ContentType = ([Regex]::Matches($Command, "Get-CM([^\s]+)")).Groups[1].Value
+                        # Get every possible path
+                        $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer
+
+                        # Create content object PSObject with needed properties and add to array
+                        $obj = New-Object PSObject
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value $ContentType
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.PackageId
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.Name
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathFlag -Value (Test-FileSystemAccess -Path $SourcePath -Rights Read)
+                        Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
+                        $AllContent.Add($obj) | Out-Null
+
+                        # Maintaining cache of shared folders for servers encountered so far
+                        $ShareCache = $GetAllPathsResult[0]
+
+                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.AllPaths.Keys -join ",") -Severity 1 -Component "GatherContentObjects"
+                    }   
                 }
-                "^Get-CMDriver\s.+" { 
-                    $SourcePath = $item.ContentSourcePath
-                    # Get every possible path
-                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer 
-                    
-                    # Create content object PSObject with needed properties and add to array
-                    $obj = New-Object PSObject
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Driver"
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.CI_ID
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.LocalizedDisplayName
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathFlag -Value (Test-FileSystemAccess -Path $SourcePath -Rights Read)
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                    $AllContent.Add($obj) | Out-Null
-
-                    # Maintaining cache of shared folders for servers encountered so far
-                    $ShareCache = $GetAllPathsResult[0]
-
-                    Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.AllPaths.Keys -join ",") -Severity 1 -Component "GatherContentObjects"
-                }
-                default {
-                    # OS images and boot iamges are absolute paths to files
-                    If (($Command -match ("^Get-CMOperatingSystemImage.+")) -Or ($Command -match ("^Get-CMBootImage.+"))) {
-                        $SourcePath = Split-Path $item.PkgSourcePath
-                    }
-                    Else {
-                        $SourcePath = $item.PkgSourcePath
-                    }
-                    
-                    $ContentType = ([Regex]::Matches($Command, "Get-CM([^\s]+)")).Groups[1].Value
-                    # Get every possible path
-                    $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer
-
-                    # Create content object PSObject with needed properties and add to array
-                    $obj = New-Object PSObject
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value $ContentType
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.PackageId
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.Name
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathFlag -Value (Test-FileSystemAccess -Path $SourcePath -Rights Read)
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                    $AllContent.Add($obj) | Out-Null
-
-                    # Maintaining cache of shared folders for servers encountered so far
-                    $ShareCache = $GetAllPathsResult[0]
-
-                    Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.AllPaths.Keys -join ",") -Severity 1 -Component "GatherContentObjects"
-                }   
             }
         }
     }
-    return $AllContent
+    End {
+        return $AllContent
+    }
 }
 
 Function Get-AllPaths {
@@ -1325,6 +1325,7 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
+                            New-HTMLMessage -Content "Test"
                             New-HTMLTable -DataTable $Result {
                                 New-HTMLTableCondition -Name "UsedBy" -Type string -Operator eq -Value "Access denied" -BackgroundColor Orange -Row
                             }
@@ -1335,11 +1336,14 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount)
+                            New-HTMLTable -DataTable ($SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount) -PreContent {
+                                New-HTMLText -Text ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): " -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", ")) -FontSize 18 -Alignment "Center"
+                                New-HTMLText -Text ("{0}MB" -f($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum)) -FontSize 18 -Alignment "Center" -FontWeight "Bolder" -Color "Red"
+                            }
                         } 
                     }
                 }
-                $Title = "All of not used folders"
+                $Title = "All not used folders"
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
