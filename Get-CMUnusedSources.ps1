@@ -64,7 +64,7 @@ Specify this option if you wish to export all ConfigMgr content objects to an XM
 Specify this option to enable the generation for a HTML report of the result. Doing this will force you to have the PSWriteHtml module installed. For more information on PSWriteHTML: https://github.com/EvotecIT/PSWriteHTML. The HTML file will be saved to the same directory as this script with a name of <scriptname>_<datetime>.html.
 
 .PARAMETER Threads
-Set the number of threads you wish to use for concurrent processing of this script. Default value is number of processes from env var NUMBER_OF_PROCESSORS minus 1. 
+Set the number of threads you wish to use for concurrent processing of this script. Default value is number of processes from env var NUMBER_OF_PROCESSORS. 
 
 .INPUTS
 
@@ -138,23 +138,19 @@ Param (
     [Parameter(Mandatory=$false, HelpMessage="Generate HTML report of the result.")]
     [switch]$HtmlReport,
     [Parameter(Mandatory=$false, HelpMessage="Number of threads to use for execution.")]
-    [int32]$Threads = [int]$env:NUMBER_OF_PROCESSORS-1
+    [int32]$Threads = $env:NUMBER_OF_PROCESSORS
 )
 
 <#
 TODO: 
         - $SiteServer should be validated - omg stupid hard
-        - Finish HTML report
         - Exclude folders parameter in get-childitem?
         - publish to technet/github/psgallery
         - delete log entries for $result??
-        - local paths in html report for content objects source path
 
     Test plan:
         - content objects with:
-            - no content path
             - Local paths
-            - Permission denied on various folders with content object source paths inside
             - server unreachable
             - server reachable but share doesn't exist
             - server reachable, share exists but no longer a valid path
@@ -162,7 +158,7 @@ TODO:
             - Running from site server and specifying local path for $SourcesLocation  
             - for html report, test all scenarios
         - validate results
-            - write up demoing -exportcmcontentobjects 
+            - write up demoing -exportcmcontentobjects and compare it against "unused" folders
 #>
 
 <#
@@ -1271,6 +1267,10 @@ $AllFolders | ForEach-Object -Begin {
         $current
     }
 
+    $SummaryNotUsedFoldersMB = $SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum
+    $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
+    $SummaryNotUsedFoldersDirectoryCount = $SummaryNotUsedFolders | Measure-Object DirectoryCount -Sum | Select-Object -ExpandProperty Sum
+
     # Write $Result to log file
     # I know Write-CMLogEntry has Enabled parameter but having it here too just makes sense - to save the gazillion of loops for something that may be disabled anyway
     # May consider deleting this section, enough about the result is written to file
@@ -1325,9 +1325,10 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLMessage -Content "Test"
                             New-HTMLTable -DataTable $Result {
                                 New-HTMLTableCondition -Name "UsedBy" -Type string -Operator eq -Value "Access denied" -BackgroundColor Orange -Row
+                            } -PreContent {
+                                ("<span style='font-size: 1.2em; margin-left: 1em;'>All of the folders under `"{0}`" and their UsedBy status, same as what's returned by the script.</span>" -f $SourcesLocation)
                             }
                         }
                     }
@@ -1336,9 +1337,14 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount) -PreContent {
-                                New-HTMLText -Text ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): " -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", ")) -FontSize 18 -Alignment "Center"
-                                New-HTMLText -Text ("{0}MB" -f($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum)) -FontSize 18 -Alignment "Center" -FontWeight "Bolder" -Color "Red"
+                            New-HTMLTable -DataTable ($SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount) {
+                                New-HTMLTableHeader -Names "Size (MB)" -Title ("{0}MB" -f $SummaryNotUsedFoldersMB) -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen
+                                New-HTMLTableHeader -Names "FileCount" -Title $SummaryNotUsedFoldersFileCount -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen
+                                New-HTMLTableHeader -Names "DirectoryCount" -Title $SummaryNotUsedFoldersDirectoryCount -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen
+                                New-HTMLTableHeader -Names "Path" -Title " " -ColumnCount 1 -AddRow
+                                New-HTMLTableHeader -Names "Size (MB)", "FileCount", "DirectoryCount" -Title "Totals" -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen -AddRow -ColumnCount 3
+                            } -PreContent {
+                                "<span style='font-size: 1.2em; margin-left: 1em;'>A condensed list of folders that were determined not used under the given path by the searched content objects. It does not include child folders, only `"unique root folders`", so this produces an accurate overall measurement of capacity used.</span>"
                             }
                         } 
                     }
@@ -1347,15 +1353,29 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($NotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount)
-                        } 
+                            New-HTMLTable -DataTable ($NotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount) -PreContent {
+                                "<span style='font-size: 1.2em; margin-left: 1em;'>All folders that were determined not used under the given path by the searched content objects.</span>"
+                            }
+                        }
                     }
                 }
                 $Title = "Content objects with invalid path"
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($AllContentObjects | Where-Object { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths)
+                            New-HTMLTable -DataTable ($AllContentObjects | Where-Object { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths) -PreContent {
+                                "<span style='font-size: 1.2em; margin-left: 1em;'>All content objects that have a source path which are not accessible from the computer that ran this script (`"{0}`").</span>" -f $env:COMPUTERNAME
+                            }
+                        }
+                    }
+                }
+                $Title = "All content objects"
+                New-HTMLTab -Name $Title {
+                    New-HTMLContent -HeaderText $Title {
+                        New-HTMLPanel {
+                            New-HTMLTable -DataTable ($AllContentObjects | Select-Object ContentType, UniqueID, Name, SourcePath) -PreContent {
+                                "<span style='font-size: 1.2em; margin-left: 1em;'>All searched ConfigMgr content objects.</span>"
+                            }
                         }
                     }
                 }
@@ -1375,8 +1395,8 @@ $AllFolders | ForEach-Object -Begin {
     Write-CMLogEntry -Value ("Content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders at {0}: {1}" -f $SourcesLocation, $AllFolders.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders where access denied: {0}" -f ($Result | Where-Object { $_.UsedBy -like "Access denied*" } | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders unused: {0}" -f ($Result | Where-Object {$_.UsedBy -eq "Not used"} | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): {2} MB" -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", "), ($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum)) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Folders unused: {0}" -f ($NotUsedFolders | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): {2} MB" -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", "), $SummaryNotUsedFoldersMB) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Runtime: {0}" -f $StopTime.ToString()) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value "Finished" -Severity 1 -Component "Exit"
 

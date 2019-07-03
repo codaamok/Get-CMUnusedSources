@@ -2,6 +2,11 @@
 
 ## Table of contents
 
+# to add
+
+- explain html table output, especially the invalid path bit with local paths
+- explain if see "access denied" exceptions thrown to console, that's ok. it won't harm the results and it will be reflected in the results / reports that access was denied on said folder(s)
+
 ## Description
 
 A PowerShell script that will tell you what folders are not used by System Center Configuration Manager content objects in a given path. This is useful if your storage is getting full and you need a way to identify what on disk is good to go.
@@ -49,7 +54,7 @@ Running the script without anything other than the mandatory parameters will do 
 - No logging
 - No PowerShell object export
 - No HTML report
-- Number of threads will be number of cores minus 1
+- Number of threads will be number from environment variable `NUMBER_OF_PROCESSORS`
 
 ## What can it do
 
@@ -233,7 +238,7 @@ Specify this option to enable the generation for a HTML report of the result. Do
 
 ### -Threads
 
-Set the number of threads you wish to use for concurrent processing of this script. Default value is number of processes from environment variable `NUMBER_OF_PROCESSORS` minus 1.
+Set the number of threads you wish to use for concurrent processing of this script. Default value is number of processes from environment variable `NUMBER_OF_PROCESSORS`.
 
 ## Author
 
