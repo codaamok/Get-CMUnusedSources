@@ -1338,7 +1338,7 @@ $AllFolders | ForEach-Object -Begin {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
                             New-HTMLTable -DataTable $Result {
-                                New-HTMLTableCondition -Name "UsedBy" -Type string -Operator includes -Value "Access denied" -BackgroundColor Orange -Row
+                                New-HTMLTableCondition -Name "UsedBy" -Type string -Operator contains -Value "Access denied" -BackgroundColor Orange -Row
                             } -PreContent {
                                 ("<span style='font-size: 1.2em; margin-left: 1em;'>All of the folders under `"{0}`" and their UsedBy status, same as what's returned by the script.</span>" -f $SourcesLocation)
                             }
