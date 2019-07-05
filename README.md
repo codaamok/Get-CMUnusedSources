@@ -2,20 +2,20 @@
 
 ## Table of contents
 
-[1. Description](#description)
-[2. Requirements](#requirements)
-[3. Getting started](#getting-started)
-[4. Default conditions](#default-conditions)
-[5. What can it do](#what-can-it-do)
-[6. Examples](#examples)
-[7. Runtime stats](#runtime-stats)
-[8. Process overview](#process-overview)
-[9. The HTML report explained](#the-html-report-explained)
-[10. The log file explained](#the-log-file-explained)
-[11. Parametsr](#parameters)
-[12. Author](#author)
-[13. License](#license)
-[14. Acknowledgements](#acknowledgements)
+1. [Description](#description)
+2. [Requirements](#requirements)
+3. [Getting started](#getting-started)
+4. [Default conditions](#default-conditions)
+5. [What can it do](#what-can-it-do)
+6. [Examples](#examples)
+7. [Runtime stats](#runtime-stats)
+8. [Process overview](#process-overview)
+9. [The HTML report explained](#the-html-report-explained)
+10. [The log file explained](#the-log-file-explained)
+11. [Parametsr](#parameters)
+12. [Author](#author)
+13. [License](#license)
+14. [Acknowledgements](#acknowledgements)
 
 ## Description
 
