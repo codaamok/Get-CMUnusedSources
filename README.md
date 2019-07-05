@@ -44,7 +44,7 @@ The script returns an array of PSObjects where each PSObject has two properties:
 
 - ConfigMgr console installed
 - PowerShell 5.1 or newer
-- [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) module installed (only if you specify `-HtmlReport` switch)
+- [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) module installed (only if you specify `-HtmlReport` switch). See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 
 ## Getting started
 
@@ -76,7 +76,7 @@ Running the script without anything other than the mandatory parameters will do 
 - Surpress the use of Write-Progress.
 - Output a log file, enable log rotation, set a maximum log file size and how many rotated log files to keep.
 - Export the array that's returned by the script to file. You can reimport it later using `Import-Clixml`.
-- Export the result to HTML, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX.
+- Export the result to HTML, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 - The script uses runspaces so you can control how many threads are concurrently used.
 
 ## Examples
@@ -154,7 +154,7 @@ Content objects: 16
 Folders at \\sccm\applications$: 40
 Folders where access denied: 0
 Folders unused: 11
-Disk space in "\\sccm\applications$" not used by ConfigMgr content objects (Application): 4.2 MB
+Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
 Runtime: 00:00:07.2891577
 
 PS C:\> $result | Select -First 10
@@ -177,7 +177,7 @@ Folder                                    UsedBy
 
 I honestly love that [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) exists.
 
-See an example of the HTML report attached to this repository.
+See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 
 You'll see four tabs each presenting a different view on the results. In each of the tabs you'll be able that view to Excel, CSV or PDF and filter the results within the browser using the search box at the top right - the criteria applies to all columns. 
 
