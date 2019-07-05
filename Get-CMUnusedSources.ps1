@@ -149,16 +149,11 @@ TODO:
         - delete log entries for $result??
 
     Test plan:
-        - content objects with:
-            - Local paths
-            - server unreachable
-            - server reachable but share doesn't exist
-            - server reachable, share exists but no longer a valid path
-            - 2 (or more) shared folders pointing to same path
-            - Running from site server and specifying local path for $SourcesLocation  
-            - for html report, test all scenarios
         - validate results
-            - write up demoing -exportcmcontentobjects and compare it against "unused" folders
+            - write up demoing -exportcmcontentobjects:
+            -- Compare it against "unused folders"
+            -- Verify all content objects source path (with successful flag)
+            -- undeterminded content objects? compare-object?
 #>
 
 <#
@@ -182,8 +177,7 @@ $PSDefaultParameterValues["New-HTMLTable:FixedHeader"]=$true
 $PSDefaultParameterValues["New-HTMLTable:DisablePaging"]=$true
 $PSDefaultParameterValues["New-HTMLTable:ScrollX"]=$true
 $PSDefaultParameterValues["New-HTMLTable:Buttons"]=("copyHtml5", "excelHtml5", "csvHtml5", "pdfHtml5")
-$PSDefaultParameterValues["New-HTMLTable:Filtering"]=$true
-$PSDefaultParameterValues["New-HTMLTable:FilteringLocation"]="Top"
+$PSDefaultParameterValues["New-HTMLTable:TextWhenNoData"]="None"
 
 <#
     Define functions
@@ -379,7 +373,7 @@ Function Get-CMContent {
                             # Maintaining cache of shared folders for servers encountered so far
                             $ShareCache = $GetAllPathsResult[0]
 
-                            Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.AllPaths.Keys -join ",") -Severity 1 -Component "GatherContentObjects"
+                            Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
                         }
                     }
                     "^Get-CMDriver\s.+" { 
@@ -400,7 +394,7 @@ Function Get-CMContent {
                         # Maintaining cache of shared folders for servers encountered so far
                         $ShareCache = $GetAllPathsResult[0]
 
-                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.AllPaths.Keys -join ",") -Severity 1 -Component "GatherContentObjects"
+                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
                     }
                     default {
                         # OS images and boot iamges are absolute paths to files
@@ -428,10 +422,11 @@ Function Get-CMContent {
                         # Maintaining cache of shared folders for servers encountered so far
                         $ShareCache = $GetAllPathsResult[0]
 
-                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.AllPaths.Keys -join ",") -Severity 1 -Component "GatherContentObjects"
+                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
                     }   
                 }
             }
+            Write-CMLogEntry -Value ("Done getting: {0}" -f $Command -replace "Get-CM") -Severity 1 -Component "GatherContentObjects"
         }
     }
     End {
@@ -479,21 +474,36 @@ Function Get-AllPaths {
     [System.Collections.ArrayList]$result = @()
     [hashtable]$AllPaths = @{}
 
-    If ([string]::IsNullOrEmpty($Path) -eq $false) {
+    If (([string]::IsNullOrEmpty($Path) -eq $false) -And ($Path -notmatch "^[a-zA-Z]:\\$")) {
         $Path = $Path.TrimEnd("\")
     }
 
     ##### Determine path type
 
     switch ($true) {
-        ($Path -match "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)(\\[a-zA-Z0-9`~\\!@#$%^&(){}\'._ -]+)") {
-            # Path that is \\server\share\folder
-            $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$Matches[3]
+        ($Path -match "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z]\$)$") {
+            # Path that is \\server\f$
+            $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$null
+            $PathType = 4
             break
         }
+        ($Path -match "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z]\$)(\\[a-zA-Z0-9`~\\!@#$%^&(){}\'._ -]+)") {
+            # Path that is \\server\f$\folder
+            $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$Matches[3]
+            $PathType = 3
+            break
+        }
+        
         ($Path -match "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)$") {
             # Path that is \\server\share
             $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$null
+            $PathType = 2
+            break
+        }
+        ($Path -match "^\\\\([a-zA-Z0-9`~!@#$%^&(){}\'._-]+)\\([a-zA-Z0-9`~!@#$%^&(){}\'._ -]+)(\\[a-zA-Z0-9`~\\!@#$%^&(){}\'._ -]+)") {
+            # Path that is \\server\share\folder
+            $Server,$ShareName,$ShareRemainder = $Matches[1],$Matches[2],$Matches[3]
+            $PathType = 1
             break
         }
         ($Path -match "^[a-zA-Z]:\\") {
@@ -526,7 +536,7 @@ Function Get-AllPaths {
     ##### Determine FQDN, IP and NetBIOS
 
     # Only determine if you have a record
-    # Might be annoying if $Server is an IP, unreachable and resolves
+    # Might be annoying if $Server is an IP, unreachable and revese lookup succeeds
     If (Test-Connection -ComputerName $Server -Count 1 -ErrorAction SilentlyContinue) {
         If ($Server -as [IPAddress]) {
             try {
@@ -586,14 +596,17 @@ Function Get-AllPaths {
         $AltServer = $_
         # Get the share's local path
         $LocalPath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Key -eq $ShareName } | Select-Object -ExpandProperty Value
+        # If \\server\f$ then $LocalPath is "F:"
         If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
-            # Add \\server\f$\path\to\shared\folder\on\disk
-            $AllPathsArr.Add(("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$')) | Out-Null
-            # Get other shared folders that point to the same path and add them to the AllPaths array
-            $SharesWithSamePath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Value -eq $LocalPath } | Select-Object -ExpandProperty Key
-            ForEach ($AltShareName in $SharesWithSamePath) {
-                $AllPathsArr.Add("\\$($AltServer)\$($AltShareName)$($ShareRemainder)") | Out-Null
-            }
+            If ($PathType -match "1|2") {
+                # Add \\server\f$\path\to\shared\folder\on\disk
+                $AllPathsArr.Add(("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$')) | Out-Null
+                # Get other shared folders that point to the same path and add them to the AllPaths array
+                $SharesWithSamePath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Value -eq $LocalPath } | Select-Object -ExpandProperty Key
+                ForEach ($AltShareName in $SharesWithSamePath) {
+                    $AllPathsArr.Add("\\$($AltServer)\$($AltShareName)$($ShareRemainder)") | Out-Null
+                }
+            }  
         }
         Else {
             Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`", either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatheringContentObjects"
@@ -603,8 +616,9 @@ Function Get-AllPaths {
     } -End {
         If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
             # Either of the below are important in case user is running local to site server and gave local path as $SourcesLocation
-            If ($LocalPath -match "^[a-zA-Z]:$") {
+            If (($LocalPath -match "^[a-zA-Z]:$") -And ($PathType -match "2|4")) {
                 # Match if just a drive letter (WHY?!) and add it to AllPaths array
+                # This occurs if path type is 2 and the share points to root of a volume
                 $AllPathsArr.Add("$($LocalPath)\") | Out-Null
             }
             Else {
@@ -798,10 +812,13 @@ Function Test-FileSystemAccess {
                         if ($fileSystemRule.FileSystemRights.HasFlag($Rights))
                         {
                             return 0
-                            break;
                         }
                     }
                 }
+                # If execution reaches here you can assume no match for $Rights
+                # Likely to occur if user is in Administrators group and process is not elevated
+                # Although this is not definitive meaning for lack of UAC
+                return 5
             }
             else
             {
@@ -1141,7 +1158,6 @@ $AllFolders | ForEach-Object -Begin {
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $RSFolder
         [System.Collections.ArrayList]$UsedBy = @()
         $IntermediatePath = $false
-        $ToSkip = $false
         $NotUsed = $false
 
         If ((Test-FileSystemAccess -Path $RSFolder -Rights Read) -eq 5) {
@@ -1149,63 +1165,59 @@ $AllFolders | ForEach-Object -Begin {
             # Still continue anyway because we can still determine if it's an exact match or intermediate path of a content object
         }
 
-        If ($RSFolder.StartsWith($ToSkip)) {
-            # Once we've identified a folder is unused, we know all its child folders are also unused because $IntermediatePath is $false
-            $NotUsed = $true
-        }
-        Else {
+        # Filtered to exclude SourcePathFlag 3 so we can exclude false positives
+        # e.g. if content objects uses \\server\share\folder1\folder2 and $SourcesLocation is \\server\share\folder1
+        # but SourcePathFlag is 3, this could report \\server\share\folder1 as intermediate where it may not be
+        # Plus, no point iterating over them if we already know that the SourcePath isn't resolvable
+        ForEach ($ContentObject in ($RSAllContentObjects | Where-Object {$_.SourcePathFlag -ne 3})) {
 
-            ForEach ($ContentObject in $RSAllContentObjects) {
-
-                switch($true) {
-                    ([string]::IsNullOrEmpty($ContentObject.SourcePath) -eq $true) {
-                        # Content object source path is empty, no point continuing
-                        break
-                    }
-                    ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.($RSFolder) -eq $env:COMPUTERNAME)) {
-                        # Content object source path is on local file system to the site server
-                        $UsedBy.Add($ContentObject.Name) | Out-Null
-                        break
-                    }
-                    (($ContentObject.AllPaths.Keys -contains $RSFolder) -eq $true) {
-                        # By default the ContainsKey method ignores case
-                        # A match has been found within the AllPaths property of the content object
-                        $UsedBy.Add($ContentObject.Name) | Out-Null
-                        break
-                    }
-                    (($ContentObject.AllPaths.Keys -match [Regex]::Escape($RSFolder)).Count -gt 0) {
-                        # If any of the content object paths start with $RSFolder
-                        $IntermediatePath = $true
-                        break
-                    }
-                    ($ContentObject.AllPaths.Keys.Where{$RSFolder.StartsWith($_, "CurrentCultureIgnoreCase")}.Count -gt 0) {
-                        # If $RSFolder starts wtih any of the content object paths
-                        $IntermediatePath = $true
-                        break
-                    }
-                    default {
-                        # Folder isn't known to any content objects
-                        $ToSkip = $RSFolder
-                        $NotUsed = $true
-                    }
+            switch($true) {
+                ([string]::IsNullOrEmpty($ContentObject.SourcePath) -eq $true) {
+                    # Content object source path is empty, no point continuing
+                    break
                 }
-
+                ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.$RSFolder -eq $env:COMPUTERNAME)) {
+                    # Content object source path is on local file system to the site server
+                    $UsedBy.Add($ContentObject.Name) | Out-Null
+                    break
+                }
+                (($ContentObject.AllPaths.Keys -contains $RSFolder) -eq $true) {
+                    # By default the ContainsKey method ignores case
+                    # A match has been found within the AllPaths property of the content object
+                    $UsedBy.Add($ContentObject.Name) | Out-Null
+                    break
+                }
+                (($ContentObject.AllPaths.Keys -match [Regex]::Escape($RSFolder)).Count -gt 0) {
+                    # If any of the content object paths start with $RSFolder
+                    $IntermediatePath = $true
+                    break
+                }
+                ($ContentObject.AllPaths.Keys.Where{$RSFolder.StartsWith($_, "CurrentCultureIgnoreCase")}.Count -gt 0) {
+                    # If $RSFolder starts wtih any of the content object paths
+                    $IntermediatePath = $true
+                    break
+                }
+                default {
+                    # Folder isn't known to any content objects
+                    $NotUsed = $true
+                }
             }
 
-            # Add to PSObject
-            switch ($true) {
-                ($UsedBy.count -gt 0) {
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy) -join ', ')
-                    break
-                }
-                ($IntermediatePath -eq $true) {
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
-                    break
-                }
-                ($NotUsed -eq $true) {
-                    Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
-                    break
-                }
+        }
+
+        # Add to PSObject
+        switch ($true) {
+            ($UsedBy.count -gt 0) {
+                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy) -join ', ')
+                break
+            }
+            ($IntermediatePath -eq $true) {
+                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
+                break
+            }
+            ($NotUsed -eq $true) {
+                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
+                break
             }
         }
         return $obj
@@ -1326,7 +1338,7 @@ $AllFolders | ForEach-Object -Begin {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
                             New-HTMLTable -DataTable $Result {
-                                New-HTMLTableCondition -Name "UsedBy" -Type string -Operator eq -Value "Access denied" -BackgroundColor Orange -Row
+                                New-HTMLTableCondition -Name "UsedBy" -Type string -Operator includes -Value "Access denied" -BackgroundColor Orange -Row
                             } -PreContent {
                                 ("<span style='font-size: 1.2em; margin-left: 1em;'>All of the folders under `"{0}`" and their UsedBy status, same as what's returned by the script.</span>" -f $SourcesLocation)
                             }
@@ -1344,7 +1356,7 @@ $AllFolders | ForEach-Object -Begin {
                                 New-HTMLTableHeader -Names "Path" -Title " " -ColumnCount 1 -AddRow
                                 New-HTMLTableHeader -Names "Size (MB)", "FileCount", "DirectoryCount" -Title "Totals" -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen -AddRow -ColumnCount 3
                             } -PreContent {
-                                "<span style='font-size: 1.2em; margin-left: 1em;'>A condensed list of folders that were determined not used under the given path by the searched content objects. It does not include child folders, only `"unique root folders`", so this produces an accurate overall measurement of capacity used.</span>"
+                                "<span style='font-size: 1.2em; margin-left: 1em;'>A list of folders that were determined not used under the given path by the searched content objects. It does not include child folders, only `"unique root folders`", so this produces an accurate measurement of capacity used.</span>"
                             }
                         } 
                     }
