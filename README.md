@@ -2,6 +2,21 @@
 
 ## Table of contents
 
+[1. Description](#description)
+[2. Requirements](#requirements)
+[3. Getting started](#getting-started)
+[4. Default conditions](#default-conditions)
+[5. What can it do](#what-can-it-do)
+[6. Examples](#examples)
+[7. Runtime stats](#runtime-stats)
+[8. Process overview](#process-overview)
+[9. The HTML report explained](#the-html-report-explained)
+[10. The log file explained](#the-log-file-explained)
+[11. Parametsr](#parameters)
+[12. Author](#author)
+[13. License](#license)
+[14. Acknowledgements](#acknowledgements)
+
 ## Description
 
 A PowerShell script that will tell you what folders are not used by System Center Configuration Manager content objects in a given path. This is useful if your storage is getting full and you need a way to identify what on disk is good to go.
@@ -96,11 +111,7 @@ The below stats are an average of 3 runs using the following options:
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com"
 ```
 
-Folders: 2633
-Content objects: 132
-CPUs: 2
-RAM: 8GB
-Runtime: 4 minutes 20 seconds
+**Folders:** 2633 - **Content objects:** 132 - **CPUs:** 2 - **RAM:** 8GB - **Runtime:** 4 minutes 20 seconds
 
 ... more examples to come
 
