@@ -99,7 +99,6 @@ Running the script without anything other than the mandatory parameters will do 
 - Optionally filter the ConfigMGr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Optionally create a log file, enable log rotation, set a maximum log file size and how many rotated log files to keep.
 - Optionally produce a HTML report, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
-- The script uses runspaces so you can control how many threads are concurrently used.
 
 ## Examples
 
