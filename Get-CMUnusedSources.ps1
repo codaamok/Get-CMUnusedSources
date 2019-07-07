@@ -147,6 +147,7 @@ TODO:
         - Exclude folders parameter in get-childitem?
         - publish to technet/github/psgallery
         - delete log entries for $result??
+        - if given F:\ or \\server\f$ currently Get-AllPaths does not determine shared folders that match the path used
 
     Test plan:
         - validate results
