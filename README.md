@@ -298,6 +298,7 @@ The `AllPaths` property is a hashtable.
 
 ```powershell
 PS C:\> $cmcontentobjs | Select-Object -ExpandProperty AllPaths -First 2 | Select-Object -ExpandProperty Keys
+
 \\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
 \\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
 \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
