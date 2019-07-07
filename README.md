@@ -10,9 +10,9 @@
 6. [Examples](#examples)
 7. [Runtime stats](#runtime-stats)
 8. [Process overview](#process-overview)
-9. [The HTML report explained](#the-html-report-explained)
-10. [The log file explained](#the-log-file-explained)
-11. [Validating the results](#validating-the-results)
+9. [Validating the results](#validating-the-results)
+10. [The HTML report explained](#the-html-report-explained)
+11. [The log file explained](#the-log-file-explained)
 12. [Parameters](#parameters)
 13. [Author](#author)
 14. [License](#license)
@@ -220,6 +220,111 @@ Folder                                    UsedBy
 \\fileserver\Applications$\chrome\x86     Chrome 73.0.3683.103::Google Chrome x86
 ```
 
+## Validating the results
+
+You could verify if a folder structure is used or not by checking out the results of the script. The HTML report has a tab "All content objects" where you can verify if part or all of the path you're curious about is used.
+
+You can easily achieve this verification with PowerShell:
+
+```powershell
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode XYZ -SiteServer "server.contoso.com" -Applications
+Starting
+Gathering folders: \\fileserver\Applications$
+Number of folders: 40
+Gathering content objects: Application
+Number of content objects: 16
+Determining unused folders, using 2 threads
+Content objects: 16
+Folders at \\fileserver\Applications$: 40
+Folders where access denied: 1
+Folders unused: 11
+Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
+Runtime: 00:00:25.2392081
+
+PS C:\> $result | Where-Object { $_.Folder -like "\\fileserver\Applications$\Office*" }
+
+Folder                          UsedBy
+------                          ------
+\\fileserver\Applications$\Office     Not used
+\\fileserver\Applications$\Office\x64 Not used
+\\fileserver\Applications$\Office\x86 Not used
+```
+
+The `-ExportCMContentObjects` is also a useful switch for this task. This is an export of the PSObject from the function `Get-CMContent` which is pretty much all of the ConfigMgr cmdlets iterating over all the content objects and just grabbing the name, unique ID and source path. 
+
+That should offer you more confidence because it is the same as running the ConfigMgr cmdlets yourself but with just the following properties:
+
+- `ContentType`
+- `UniqueID`
+- `Name`
+- `SourcePath`
+- `SourcePathFlag`
+- `AllPaths`
+
+The `SourcePathFlag` property can have three values:
+
+- `0` = `ERROR_SUCCESS`
+- `5` = `ERROR_ACCESS_DENIED`
+- `3` = `ERROR_PATH_NOT_FOUND`
+
+```powershell
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode XYZ -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
+PS C:\> $cmcontentobjs = Import-Clixml -Path ".\Get-CMUnusedSources.ps1_2019-07-07_16-48-52_cmobjects.xml"
+PS C:\> $cmcontentobjs | Select -First 2
+
+ContentType    : Application
+UniqueID       : DeploymentType_0ab33a06-96ee-441a-83d8-3d3b6d0be224
+Name           : Chrome 73.0.3683.103::Google Chrome x86
+SourcePath     : \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86\
+SourcePathFlag : 0
+AllPaths       : {\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86,
+                 \\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86,
+                 \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86,
+                 \\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86...}
+```
+
+The `AllPaths` property is a hashtable.
+
+```powershell
+ContentType    : Application
+UniqueID       : DeploymentType_f77958c3-2d93-4ac7-a81d-02e83aa69b83
+Name           : Chrome 73.0.3683.103::Google Chrome x64
+SourcePath     : \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64\
+SourcePathFlag : 0
+AllPaths       : {\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64,
+                 \\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
+                 \\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
+                 \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64...}
+
+PS C:\> $cmcontentobjs | Select-Object -ExpandProperty AllPaths -First 2 | Select-Object -ExpandProperty Keys
+\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver.contoso.com\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\192.168.175.11\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\192.168.175.11\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
+F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\192.168.175.11\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
+F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver.contoso.com\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\192.168.175.11\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
+```
+
 ## The HTML report explained
 
 I honestly love that [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) exists. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
@@ -349,109 +454,6 @@ Occurs after main execution and just before closing.
 You have specified the switch to produce a HTML report and there was a problem doing so.
 
 The script will attempt to continue and close normally.
-
-## Validating the results
-
-You could verify if a folder structure is used or not by checking out the results of the script. The HTML report has a tab "All content objects" where you can verify if part or all of the path you're curious about is used.
-
-You can easily achieve this verification with PowerShell:
-
-```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode XYZ -SiteServer "server.contoso.com" -Applications
-Starting
-Gathering folders: \\fileserver\Applications$
-Number of folders: 40
-Gathering content objects: Application
-Number of content objects: 16
-Determining unused folders, using 2 threads
-Content objects: 16
-Folders at \\fileserver\Applications$: 40
-Folders where access denied: 1
-Folders unused: 11
-Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
-Runtime: 00:00:25.2392081
-
-PS C:\Users\Adam> $result | Where-Object { $_.Folder -like "\\fileserver\Applications$\Office*" }
-
-Folder                          UsedBy
-------                          ------
-\\fileserver\Applications$\Office     Not used
-\\fileserver\Applications$\Office\x64 Not used
-\\fileserver\Applications$\Office\x86 Not used
-```
-
-The `-ExportCMContentObjects` is also a useful switch for this task. This is an export of the PSObject from the function `Get-CMContent` which is pretty much all of the ConfigMgr cmdlets iterating over all the content objects and just grabbing the name, unique ID and source path. 
-
-That should offer you more confidence because it is the same as running the ConfigMgr cmdlets yourself but with just the following properties:
-
-- `ContentType`
-- `UniqueID`
-- `Name`
-- `SourcePath`
-- `SourcePathFlag`
-- `AllPaths`
-
-The `SourcePathFlag` property can have three values:
-
-- `0` = `ERROR_SUCCESS`
-- `5` = `ERROR_ACCESS_DENIED`
-- `3` = `ERROR_PATH_NOT_FOUND`
-
-The `AllPaths` property is a hashtable.
-
-```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode XYZ -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
-PS C:\> $cmcontentobjs = Import-Clixml -Path ".\Get-CMUnusedSources.ps1_2019-07-07_16-48-52_cmobjects.xml"
-PS C:\Users\Adam> $cmcontentobjs | Select -First 2
-
-ContentType    : Application
-UniqueID       : DeploymentType_0ab33a06-96ee-441a-83d8-3d3b6d0be224
-Name           : Chrome 73.0.3683.103::Google Chrome x86
-SourcePath     : \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86\
-SourcePathFlag : 0
-AllPaths       : {\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86,
-                 \\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86,
-                 \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86,
-                 \\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86...}
-
-ContentType    : Application
-UniqueID       : DeploymentType_f77958c3-2d93-4ac7-a81d-02e83aa69b83
-Name           : Chrome 73.0.3683.103::Google Chrome x64
-SourcePath     : \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64\
-SourcePathFlag : 0
-AllPaths       : {\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64,
-                 \\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
-                 \\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
-                 \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64...}
-
-PS C:\Users\Adam> $cmcontentobjs | Select-Object -ExpandProperty AllPaths -First 2 | Select-Object -ExpandProperty Keys
-\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\fileserver\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\fileserver.contoso.com\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\192.168.175.11\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\fileserver\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\192.168.175.11\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
-F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
-\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\192.168.175.11\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
-F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\fileserver\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\fileserver\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\fileserver.contoso.com\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\192.168.175.11\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
-\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
-```
 
 ## Parameters
 
