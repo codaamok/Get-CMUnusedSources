@@ -281,11 +281,8 @@ AllPaths       : {\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Goo
                  \\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86,
                  \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86,
                  \\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86...}
-```
 
-The `AllPaths` property is a hashtable.
 
-```powershell
 ContentType    : Application
 UniqueID       : DeploymentType_f77958c3-2d93-4ac7-a81d-02e83aa69b83
 Name           : Chrome 73.0.3683.103::Google Chrome x64
@@ -295,7 +292,11 @@ AllPaths       : {\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Googl
                  \\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
                  \\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
                  \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64...}
+```
 
+The `AllPaths` property is a hashtable.
+
+```powershell
 PS C:\> $cmcontentobjs | Select-Object -ExpandProperty AllPaths -First 2 | Select-Object -ExpandProperty Keys
 \\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
 \\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
