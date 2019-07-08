@@ -585,6 +585,10 @@ Function Get-AllPaths {
             }
         }
         Else {
+            # Add null so on the next encounter of a server from a given UNC path, we don't wastefully try again
+            $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
+                $Cache.Add($_, $null)
+            }
             Write-CMLogEntry -Value ("Could not update cache because could not get shared folders from: `"{0}`"" -f $FQDN) -Severity 2 -Component "GatheringContentObjects"
         }
     }
