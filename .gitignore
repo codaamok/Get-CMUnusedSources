@@ -7,3 +7,6 @@
 
 # XML Output from Script
 *.xml
+
+# VSCode Files
+.vscode/*
