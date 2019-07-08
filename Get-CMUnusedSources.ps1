@@ -1385,7 +1385,7 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($AllContentObjects | Select-Object ContentType, UniqueID, Name, SourcePath) -PreContent {
+                            New-HTMLTable -DataTable ($AllContentObjects | Select-Object ContentType, UniqueID, Name, SourcePath, SourcePathFlag) -PreContent {
                                 "<span style='font-size: 1.2em; margin-left: 1em;'>All searched ConfigMgr content objects.</span>"
                             }
                         }
