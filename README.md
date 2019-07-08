@@ -358,7 +358,7 @@ A common result you'll see here, if you run the script remote from a site server
 
 All searched ConfigMgr content objects. For example, if you specified `-Drivers` and `-DriverPackages` then it would only show you Driver and DriverPackage content object types, because that's all that was gathered.
 
-- explain html table output, especially the invalid path bit with local paths
+(Todo: Explain HTML table output, especially the invalid path bit with local paths)
 
 ## The log file explained
 
