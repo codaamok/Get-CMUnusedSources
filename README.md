@@ -240,7 +240,7 @@ Folders unused: 11
 Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
 Runtime: 00:00:25.2392081
 
-PS C:\> $result | Where-Object { $_.Folder -like "\\fileserver\Applications$\Office*" }
+PS C:\> $result | Where-Object { $_.Folder -like "\\server\folder*" }
 
 Folder                          UsedBy
 ------                          ------
