@@ -600,7 +600,12 @@ Function Get-AllPaths {
     $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object -Process {
         $AltServer = $_
         # Get the share's local path
-        $LocalPath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Key -eq $ShareName } | Select-Object -ExpandProperty Value
+        If ($Cache.$AltServer.count -gt 0) {
+            $LocalPath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Key -eq $ShareName } | Select-Object -ExpandProperty Value
+        }
+        Else {
+            $LocalPath = $null
+        }
         # If \\server\f$ then $LocalPath is "F:"
         If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
             If ($PathType -match "1|2") {
