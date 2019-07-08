@@ -334,7 +334,7 @@ You'll see five tabs. In each of the tabs you'll be able to export that view to 
 
 ### All folders
 
-All of the folders under "F:\" and their UsedBy status, same as what's returned by the script.
+All of the folders under `-SourcesLocation` and their UsedBy status, same as what's returned by the script.
 
 ### Summary of not used folders
 
