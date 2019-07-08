@@ -127,7 +127,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -S
 - Exports all searched ConfigMgr content objects to file saved in the same directory as the script.
 - Gathers only Packages, Applications, Operating System images and Operating System upgrade images content objects.
 - Produces a HTML report saved in the same directory as the script. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
-- Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` becuase that's the default value of `-Threads`.
+- Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` because that's the default value of `-Threads`.
 - Returns the result PowerShell object to variable `$result`.
 
 ---
@@ -171,7 +171,7 @@ The source path for each content object is manipulated to create every possible 
 F:\Applications\7zip\x64
 ````
 
-In the above example, the script discovered the local path for the `Applicatons$` share was `F:\Applications` and that `SomeOtherSharedFolder$` was another share that also reoslves to the same local path. This path permutation enables the script to identify used folders that could use different absolute paths but resolve to the same folder.
+In the above example, the script discovered the local path for the `Applications$` share was `F:\Applications` and that `SomeOtherSharedFolder$` was another share that also resolves to the same local path. This path permutation enables the script to identify used folders that could use different absolute paths but resolve to the same folder.
 
 Once all the folders and ConfigrMgr content objects have been gathered, it begins iterating through through each folder, and for each folder it iterates over all content objects to determine if said folder is used by any content objects. 
 
