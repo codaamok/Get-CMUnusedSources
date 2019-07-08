@@ -96,7 +96,7 @@ Running the script without anything other than the mandatory parameters will do 
 - `-Threads` to control how many threads are used for concurrent processing.
 - Optionally exports PowerShell objects to file of either all your ConfigMgr content objects and/or the final report. You can later reimport these using `Import-Clixml`.
 - Optionally create a HTML report where you can then export to CSV/PDF/XSLX.
-- Optionally filter the ConfigMGr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
+- Optionally filter the ConfigMgr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Optionally create a log file, enable log rotation, set a maximum log file size and how many rotated log files to keep.
 - Optionally produce a HTML report, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 
@@ -127,7 +127,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -S
 - Exports all searched ConfigMgr content objects to file saved in the same directory as the script.
 - Gathers only Packages, Applications, Operating System images and Operating System upgrade images content objects.
 - Produces a HTML report saved in the same directory as the script. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
-- Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` becuase that's the default value of `-Threads`.
+- Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` because that's the default value of `-Threads`.
 - Returns the result PowerShell object to variable `$result`.
 
 ---
@@ -171,7 +171,7 @@ The source path for each content object is manipulated to create every possible 
 F:\Applications\7zip\x64
 ````
 
-In the above example, the script discovered the local path for the `Applicatons$` share was `F:\Applications` and that `SomeOtherSharedFolder$` was another share that also reoslves to the same local path. This path permutation enables the script to identify used folders that could use different absolute paths but resolve to the same folder.
+In the above example, the script discovered the local path for the `Applications$` share was `F:\Applications` and that `SomeOtherSharedFolder$` was another share that also resolves to the same local path. This path permutation enables the script to identify used folders that could use different absolute paths but resolve to the same folder.
 
 Once all the folders and ConfigrMgr content objects have been gathered, it begins iterating through through each folder, and for each folder it iterates over all content objects to determine if said folder is used by any content objects. 
 
@@ -358,7 +358,7 @@ A common result you'll see here, if you run the script remote from a site server
 
 All searched ConfigMgr content objects. For example, if you specified `-Drivers` and `-DriverPackages` then it would only show you Driver and DriverPackage content object types, because that's all that was gathered.
 
-- explain html table output, especially the invalid path bit with local paths
+(Todo: Explain HTML table output, especially the invalid path bit with local paths)
 
 ## The log file explained
 
