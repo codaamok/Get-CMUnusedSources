@@ -96,7 +96,7 @@ Running the script without anything other than the mandatory parameters will do 
 - `-Threads` to control how many threads are used for concurrent processing.
 - Optionally exports PowerShell objects to file of either all your ConfigMgr content objects and/or the final report. You can later reimport these using `Import-Clixml`.
 - Optionally create a HTML report where you can then export to CSV/PDF/XSLX.
-- Optionally filter the ConfigMGr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
+- Optionally filter the ConfigMgr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Optionally create a log file, enable log rotation, set a maximum log file size and how many rotated log files to keep.
 - Optionally produce a HTML report, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 
