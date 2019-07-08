@@ -10,25 +10,47 @@
 6. [Examples](#examples)
 7. [Runtime stats](#runtime-stats)
 8. [Process overview](#process-overview)
-9. [The HTML report explained](#the-html-report-explained)
-10. [The log file explained](#the-log-file-explained)
-11. [Parametsr](#parameters)
-12. [Author](#author)
-13. [License](#license)
-14. [Acknowledgements](#acknowledgements)
+9. [Validating the results](#validating-the-results)
+10. [The HTML report explained](#the-html-report-explained)
+11. [The log file explained](#the-log-file-explained)
+12. [Parameters](#parameters)
+13. [Author](#author)
+14. [License](#license)
+15. [Acknowledgements](#acknowledgements)
 
 ## Description
 
-A PowerShell script that will tell you what folders are not used by System Center Configuration Manager content objects in a given path. This is useful if your storage is getting full and you need a way to identify what on disk is good to go.
+A PowerShell script that will tell you what folders are not used by System Center Configuration Manager in a given path. This is useful if your storage is getting full and you need a way to identify what on disk is good to go.
 
-The script returns an array of PSObjects where each PSObject has two properties:  `Folder` and `UsedBy`. The `UsedBy` prop can have one or more of the following values:
+The script returns an array of PSObjects with two properties: `Folder` and `UsedBy`.
 
-- A list all of the names for the content objects used by the folder.*
+The `UsedBy` property can have one or more of the following values:
+
+- A list of names for the content objects used by the folder.*
 - `An intermediate folder (sub or parent folder)`: a sub or parent folders of a folder used by a content object.
 - `Access denied`: a folder that the user running the script does not have read access to.
 - `Not used`: a folder that is not used by any content objects.
 
 \* for Applications, the naming convention will be `<Application name>::<Deployment Type name>`.
+
+For example:
+
+```powershell
+PS C:\> $result | Select -First 10
+
+Folder                                    UsedBy
+------                                    ------
+\\fileserver\Applications$                An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\.NET3.5        Not used
+\\fileserver\Applications$\.NET3.5SP1     Not used
+\\fileserver\Applications$\7zip           An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\7zip\uninstall 7-Zip 19.00::7-Zip 19.00 - Windows Installer (*.msi file)
+\\fileserver\Applications$\7zip\x64       7-Zip 19.00::7-Zip 19.00 (x64 edition) - Windows Installer (*.msi file)
+\\fileserver\Applications$\7zip\x86       7-Zip 19.00::7-Zip 19.00 - Windows Installer (*.msi file)
+\\fileserver\Applications$\chrome         An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\chrome\x64     Chrome 73.0.3683.103::Google Chrome x64
+\\fileserver\Applications$\chrome\x86     Chrome 73.0.3683.103::Google Chrome x86
+```
 
 > **Note:** I refer to a "content object" as an object within ConfigMgr that has a source path associated with it i.e. an object with content. This includes:
 > - Packages
@@ -49,7 +71,7 @@ The script returns an array of PSObjects where each PSObject has two properties:
 ## Getting started
 
 1. Download Get-CMUnusedSources.ps1
-2. Check out the examples and read through the parameters available. If you're eager, then calling the script as is and only providing values for the mandatory parameters will get you going under the default conditions (_see below_).
+2. Check out the examples below and read through the parameters available. If you're eager, then calling the script as is and only providing values for the mandatory parameters will get you going under the default conditions (_see below_).
 
 ## Default conditions
 
@@ -68,16 +90,15 @@ Running the script without anything other than the mandatory parameters will do 
 
 ## What can it do
 
-- This script can be run remotely from a site server. It makes zero changes to your ConfigMgr site. It's purely for reporting. 
-- It returns an exportable PowerShell object and optionally create a HTML report where you can then export to CSV/PDF/XSLX.
-- The script returns the results as an array of PSObjects. I find it useful when a script that's used for reporting returns something that I can immediately do _something_ with.
-- -SourcesLocation can be a UNC or local path. Do not worry about the MAX_PATH limit as the script prefixes what you give with `\\?\..` where the MAX_PATH limit is 32767 - [more info](https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file#maximum-path-length-limitation).
-- You can filter the content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
-- Surpress the use of Write-Progress.
-- Output a log file, enable log rotation, set a maximum log file size and how many rotated log files to keep.
-- Export the array that's returned by the script to file. You can reimport it later using `Import-Clixml`.
-- Export the result to HTML, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
-- The script uses runspaces so you can control how many threads are concurrently used.
+- You can execute this script remotely from a site server. It makes zero changes to your ConfigMgr site. It's purely for reporting.
+- The result is returned as an array of PSObjects.
+- `-SourcesLocation` can be a UNC or local path and works around the 260 MAX_PATH limit.
+- `-Threads` to control how many threads are used for concurrent processing.
+- Optionally exports PowerShell objects to file of either all your ConfigMgr content objects and/or the final report. You can later reimport these using `Import-Clixml`.
+- Optionally create a HTML report where you can then export to CSV/PDF/XSLX.
+- Optionally filter the ConfigMGr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
+- Optionally create a log file, enable log rotation, set a maximum log file size and how many rotated log files to keep.
+- Optionally produce a HTML report, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 
 ## Examples
 
@@ -85,15 +106,29 @@ Running the script without anything other than the mandatory parameters will do 
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -LogFileSize 2MB -ExportReturnObject -HtmlReport -Threads 2
 ```
 
-It will gather all content objects relevant to site code `XYZ` and all folders under `\\server\folder`. A log file will be created in the same directory as the script and rolled over when it reaches 2MB, with no limit on number of rotated logs to keep. When finished, the object returned by the script will be exported and also the HTML report too. 2 threads will be used.
+- Gather all content objects relevant to site code `XYZ`.
+- Gather all folders under `\\server\folder`.
+- A log file will be created in the same directory as the script and rolled over when it reaches 2MB, with no limit on number of rotated logs to keep.
+- When finished, the object returned by the script will be exported and also the HTML report too.
+- 2 threads will be used.
+- Returns the result PowerShell object to variable `$result`.
 
 ---
 
 ```powershell
-PS C:\>
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -NumOfRotatedLogs 3 -NoProgress -ExportReturnObject -ExportCMContentObjects -Packages -Applications -OSImages -OSUpgradeImages -HtmlReport
 ```
 
-Another example here
+- Gather all content objects relevant to site code `XYZ`.
+- Gather all folders under `F:\some\folder`.
+- A log file will be created in the same directory as the script and rolled over when it reaches 5MB, keeping a maximum of 4 log files throughout execution (current log file plus 3 rolled).
+- Surpress PowerShell progress (`Write-Progress`).
+- Exports the result PowerShell object to file saved in the same directory as the script.
+- Exports all searched ConfigMgr content objects to file saved in the same directory as the script.
+- Gathers only Packages, Applications, Operating System images and Operating System upgrade images content objects.
+- Produces a HTML report saved in the same directory as the script. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
+- Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` becuase that's the default value of `-Threads`.
+- Returns the result PowerShell object to variable `$result`.
 
 ---
 
@@ -113,15 +148,15 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -
 
 **Folders:** 2633 - **Content objects:** 132 - **CPUs:** 2 - **RAM:** 8GB - **Runtime:** 4 minutes 20 seconds
 
-... more examples to come
+... more come
 
 ## Process overview
 
-The process begins by by gathering all (or selective) content objects within a hierarchy by site code using the ConfigMgr cmdlets. It also recursively gathers all folders under a given path.
+The process begins by gathering all (or selective) ConfigMgr content objects within a hierarchy by site code using the ConfigMgr cmdlets. It also recursively gathers all folders under `-SourcesLocation`.
 
-> **Note:** it's OK if you see "Access denied" exceptions printed to console, the script will handle these and report accordingly.
+> **Note:** It's OK if you see "Access denied" exceptions printed to console, the script will handle these and report accordingly.
 
-The source path for each content object is manipulated to create every possible valid permutation. For example, say PackageABC1 has a source path `\\server\Applications$\7zip\x64`. The script will create an AllPaths property with a list like this:
+The source path for each content object is manipulated to create every possible valid permutation. For example, say package P01000CD has a source path `\\server\Applications$\7zip\x64`. The script will create an AllPaths property with a list like this:
 
 ```text
 \\192.168.175.11\Applications$\7zip\x64
@@ -138,7 +173,18 @@ F:\Applications\7zip\x64
 
 In the above example, the script discovered the local path for the `Applicatons$` share was `F:\Applications` and that `SomeOtherSharedFolder$` was another share that also reoslves to the same local path. This path permutation enables the script to identify used folders that could use different absolute paths but resolve to the same folder.
 
-Once all the folders and ConfigrMgr content objects have been gathered, it begins iterating through through each folder, and for each folder it iterates over all content objects to determine if said folder is used. This process builds an array of PSObjects and returns said array once complete.
+Once all the folders and ConfigrMgr content objects have been gathered, it begins iterating through through each folder, and for each folder it iterates over all content objects to determine if said folder is used by any content objects. 
+
+This process builds an array of PSObjects with the two properties `Folder` and `UsedBy`.
+
+The `UsedBy` property can have one or more of the following values:
+
+- A list of names for the content objects used by the folder.*
+- `An intermediate folder (sub or parent folder)`: a sub or parent folders of a folder used by a content object.
+- `Access denied`: a folder that the user running the script does not have read access to.
+- `Not used`: a folder that is not used by any content objects.
+
+\* for Applications, the naming convention will be `<Application name>::<Deployment Type name>`.
 
 ### Example output
 
@@ -151,7 +197,7 @@ Gathering content objects: Application
 Number of content objects: 16
 Determining unused folders, using 2 threads
 Content objects: 16
-Folders at \\sccm\applications$: 40
+Folders at \\fileserver\Applications$: 40
 Folders where access denied: 0
 Folders unused: 11
 Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
@@ -173,13 +219,118 @@ Folder                                    UsedBy
 \\fileserver\Applications$\chrome\x86     Chrome 73.0.3683.103::Google Chrome x86
 ```
 
+## Validating the results
+
+You could verify if a folder structure is used or not by checking out the results of the script. The HTML report has a tab "All content objects" where you can verify if part or all of the path you're curious about is used.
+
+You can easily achieve this verification with PowerShell:
+
+```powershell
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode XYZ -SiteServer "server.contoso.com" -Applications
+Starting
+Gathering folders: \\fileserver\Applications$
+Number of folders: 40
+Gathering content objects: Application
+Number of content objects: 16
+Determining unused folders, using 2 threads
+Content objects: 16
+Folders at \\fileserver\Applications$: 40
+Folders where access denied: 1
+Folders unused: 11
+Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
+Runtime: 00:00:25.2392081
+
+PS C:\> $result | Where-Object { $_.Folder -like "\\fileserver\Applications$\Office*" }
+
+Folder                          UsedBy
+------                          ------
+\\fileserver\Applications$\Office     Not used
+\\fileserver\Applications$\Office\x64 Not used
+\\fileserver\Applications$\Office\x86 Not used
+```
+
+The `-ExportCMContentObjects` is also a useful switch for this task. This is an export of the PSObject from the function `Get-CMContent` which is pretty much all of the ConfigMgr cmdlets iterating over all the content objects and just grabbing the name, unique ID and source path. 
+
+That should offer you more confidence because it is the same as running the ConfigMgr cmdlets yourself but with just the following properties:
+
+- `ContentType`
+- `UniqueID`
+- `Name`
+- `SourcePath`
+- `SourcePathFlag`
+- `AllPaths`
+
+The `SourcePathFlag` property can have three values:
+
+- `0` = `ERROR_SUCCESS`
+- `5` = `ERROR_ACCESS_DENIED`
+- `3` = `ERROR_PATH_NOT_FOUND`
+
+```powershell
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode XYZ -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
+PS C:\> $cmcontentobjs = Import-Clixml -Path ".\Get-CMUnusedSources.ps1_2019-07-07_16-48-52_cmobjects.xml"
+PS C:\> $cmcontentobjs | Select -First 2
+
+ContentType    : Application
+UniqueID       : DeploymentType_0ab33a06-96ee-441a-83d8-3d3b6d0be224
+Name           : Chrome 73.0.3683.103::Google Chrome x86
+SourcePath     : \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86\
+SourcePathFlag : 0
+AllPaths       : {\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86,
+                 \\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86,
+                 \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86,
+                 \\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86...}
+
+
+ContentType    : Application
+UniqueID       : DeploymentType_f77958c3-2d93-4ac7-a81d-02e83aa69b83
+Name           : Chrome 73.0.3683.103::Google Chrome x64
+SourcePath     : \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64\
+SourcePathFlag : 0
+AllPaths       : {\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64,
+                 \\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
+                 \\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
+                 \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64...}
+```
+
+The `AllPaths` property is a hashtable.
+
+```powershell
+PS C:\> $cmcontentobjs | Select-Object -ExpandProperty AllPaths -First 2 | Select-Object -ExpandProperty Keys
+
+\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver.contoso.com\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\192.168.175.11\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\192.168.175.11\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
+F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86
+\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\192.168.175.11\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
+F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver.contoso.com\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\192.168.175.11\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
+\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
+```
+
 ## The HTML report explained
 
-I honestly love that [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) exists.
+I honestly love that [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) exists. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 
-See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
-
-You'll see four tabs each presenting a different view on the results. In each of the tabs you'll be able that view to Excel, CSV or PDF and filter the results within the browser using the search box at the top right - the criteria applies to all columns. 
+You'll see five tabs. In each of the tabs you'll be able to export that view to Excel, CSV or PDF and filter the results within the browser using the search box at the top right - the criteria applies to all columns.
 
 ### All folders
 
@@ -213,15 +364,15 @@ All searched ConfigMgr content objects. For example, if you specified `-Drivers`
 
 You'll need CMTrace to read it.
 
-If you specify `-Log` it can be quite noisy. By default it pumps out not just the progress, e.g. gathering folders and gathering content objects, but it also prints all content objects, their properties and the final result which is all folders under `-SourcesLocation` and their `UsedBy` status.
+If you specify `-Log` it can be quite noisy. It prints not just the progress, e.g. gathering folders and gathering content objects, but it also prints all content objects, their properties and the final result which is all folders under `-SourcesLocation` and their `UsedBy` status. 
 
-You may spot some warnings highlighted yellow or errors in red so I'll explain some of them here.
+You may spot some highlighted yellow warnings or red errors so I'll explain some of them here.
 
 > Unable to interpret path "x"
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
-One of your content objects in ConfigMgr has a funky source path that I couldn't determine or foresee. If you get this, please share with me "x"!
+One of your content objects in ConfigMgr has a funky source path that I couldn't determine. If you get this, please share with me "x"!
 
 This would only be problematic for the content object(s) that experience this.
 
