@@ -240,13 +240,16 @@ Folders unused: 11
 Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
 Runtime: 00:00:25.2392081
 
-PS C:\> $result | Where-Object { $_.Folder -like "\\server\folder*" }
+PS C:\> $result | Where-Object { $_.Folder -like "\\fileserver\Applications$*" }
 
-Folder                          UsedBy
-------                          ------
+Folder                                UsedBy
+------                                ------
+\\fileserver\Applications$\.NET3.5    Not used
+\\fileserver\Applications$\.NET3.5SP1 Not used
 \\fileserver\Applications$\Office     Not used
 \\fileserver\Applications$\Office\x64 Not used
 \\fileserver\Applications$\Office\x86 Not used
+...
 ```
 
 The `-ExportCMContentObjects` is also a useful switch for this task. This is an export of the PSObject from the function `Get-CMContent` which is pretty much all of the ConfigMgr cmdlets iterating over all the content objects and just grabbing the name, unique ID and source path. 
