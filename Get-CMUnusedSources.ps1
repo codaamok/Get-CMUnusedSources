@@ -599,8 +599,8 @@ Function Get-AllPaths {
 
     $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object -Process {
         $AltServer = $_
-        # Get the share's local path
-        If ($Cache.$AltServer.count -gt 0) {
+        If ($Cache.$AltServer -ne $null) {
+            # Get the share's local path
             $LocalPath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Key -eq $ShareName } | Select-Object -ExpandProperty Value
         }
         Else {
