@@ -427,7 +427,7 @@ Function Get-CMContent {
                     }   
                 }
             }
-            Write-CMLogEntry -Value ("Done getting: {0}" -f $Command -replace "Get-CM") -Severity 1 -Component "GatherContentObjects"
+            Write-CMLogEntry -Value ("Done gathering: {0}" -f ($Command -replace "Get-CM").Split(" ")[0]) -Severity 1 -Component "GatherContentObjects"
         }
     }
     End {
@@ -1132,7 +1132,7 @@ $SiteServer = $FQDN.Split(".")[0]
 Write-CMLogEntry -Value ("Gathering folders: {0}" -f $SourcesLocation) -Severity 1 -Component "GatherFolders" -WriteHost
 If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status ("Gathering all folders at: {0}" -f $SourcesLocation) }
 $AllFolders = Get-AllFolders -Path $SourcesLocation -AltFolderSearch $AltFolderSearch.IsPresent
-Write-CMLogEntry -Value ("Number of folders: {0}" -f $AllFolders.count) -Severity 1 -Component "GatherFolders" -WriteHost
+Write-CMLogEntry -Value ("Number of gathered folders: {0}" -f $AllFolders.count) -Severity 1 -Component "GatherFolders" -WriteHost
 
 # Gather content objects
 
@@ -1142,7 +1142,7 @@ Set-CMDrive -SiteCode $SiteCode -Server $SiteServer -Path $OriginalPath
 Write-CMLogEntry -Value ("Gathering content objects: {0}" -f ($Commands -replace "Get-CM" -join ", ")) -Severity 1 -Component "GatherContentObjects" -WriteHost
 If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status ("Gathering CM content objects: {0}" -f ($Commands -replace "Get-CM" -join ", ")) }
 $AllContentObjects = Get-CMContent -Commands $Commands -SiteServer $SiteServer -SiteCode $SiteCode
-Write-CMLogEntry -Value ("Number of content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "GatherContentObjects" -WriteHost
+Write-CMLogEntry -Value ("Number of gathered content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "GatherContentObjects" -WriteHost
 
 Set-Location $OriginalPath
 
