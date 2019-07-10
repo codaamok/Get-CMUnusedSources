@@ -725,8 +725,9 @@ Function Get-AllFolders {
             [System.Collections.ArrayList]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse | Select-Object -ExpandProperty FullName
         }
         catch {
-            Write-CMLogEntry -Value "Consider using -AltFolderSearch, quiting..." -Severity 3 -Component "GatherFolders"
-            throw "Consider using -AltFolderSearch"
+            $Message = "Consider using -AltFolderSearch, quiting..."
+            Write-CMLogEntry -Value $Message -Severity 3 -Component "GatherFolders"
+            throw $Message
         }
     }
 
@@ -1024,7 +1025,9 @@ Function Set-CMDrive {
             Import-Module ("{0}\..\ConfigurationManager.psd1" -f $ENV:SMS_ADMIN_UI_PATH)
         }
         catch {
-            throw "Failed to import Configuration Manager module"
+            $Message = "Failed to import Configuration Manager module"
+            Write-CMLogEntry -Value $Message -Severity 3 -Component "Initialisation"
+            throw $Message
         }
     }
 
@@ -1045,7 +1048,9 @@ Function Set-CMDrive {
             Set-Location $Path
             Remove-PSDrive -Name $SiteCode -Force
         }
-        throw "Failed to create New-PSDrive with site code `"{0}`" and server `"{1}`"" -f $SiteCode, $Server
+        $Message = "Failed to create New-PSDrive with site code `"{0}`" and server `"{1}`"" -f $SiteCode, $Server
+        Write-CMLogEntry -Value $Message -Severity 3 -Component "Initialisation"
+        throw $Message
     }
 
 }
