@@ -1082,6 +1082,12 @@ If ($HtmlReport.IsPresent -eq $true) {
         Write-CMLogEntry -Value $Message -Severity 3 -Component "Initilsation" -WriteHost
         throw $Message
     }
+    [version]$moduleVersion = Get-Module PSWriteHTML | Select-Object -ExpandProperty Version
+    If($moduleVersion -lt [version]"0.0.44.0") {
+        $Message = "PSWriteHtml version is too old ({0}).  Requires 0.0.44+." -f $moduleVersion.ToString()
+        Write-CMLogEntry -Value $Message -Severity 3 -Component "Initilsation" -WriteHost
+        throw $Message
+    }
 }
 
 [System.Collections.ArrayList]$AllContentObjects = @()
