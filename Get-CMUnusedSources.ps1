@@ -148,6 +148,12 @@ TODO:
         - publish to technet/github/psgallery
         - delete log entries for $result??
         - if given F:\ or \\server\f$ currently Get-AllPaths does not determine shared folders that match the path used
+        - improve log entry if $LocalPath is null cuz it couldn't query win32_share, make it suggest it wasn't polled again
+        - improve write-progress for -Process of main execution
+        - add write-host .. -nonewline to verify sleep 2seconds isn't lagging but indeed waiting for runspace release
+        - datasets instead of .net collections?
+        - test -altfoldersearch with use of where() and not where-object
+        - take chris dent's remarks onboard
 
     Test plan:
         - validate results
@@ -173,11 +179,7 @@ $PSDefaultParameterValues["Write-CMLogEntry:MaxNumOfRotatedLogs"]=$NumOfRotatedL
 $PSDefaultParameterValues["New-HTMLContent:SelectorColor"]="DeepSkyBlue"
 $PSDefaultParameterValues["New-HTMLContent:HeaderBackGroundColor"]="DeepSkyBlue"
 $PSDefaultParameterValues["New-HTMLTable:DisableColumnReorder"]=$true
-$PSDefaultParameterValues["New-HTMLTable:HideFooter"]=$true
-$PSDefaultParameterValues["New-HTMLTable:FixedHeader"]=$true
-$PSDefaultParameterValues["New-HTMLTable:DisablePaging"]=$true
 $PSDefaultParameterValues["New-HTMLTable:ScrollX"]=$true
-$PSDefaultParameterValues["New-HTMLTable:Buttons"]=("copyHtml5", "excelHtml5", "csvHtml5", "pdfHtml5")
 $PSDefaultParameterValues["New-HTMLTable:TextWhenNoData"]="None"
 
 <#
@@ -566,7 +568,7 @@ Function Get-AllPaths {
     }
     Else {
         # Won't be able to query Win32_Class if unreachable so no point continuing
-        Write-CMLogEntry -Value ("Server `"{0}`" is unreachable" -f $Server) -Severity 2 -Component "GatheringContentObjects"
+        Write-CMLogEntry -Value ("Server `"{0}`" is unreachable" -f $Server) -Severity 2 -Component "GatherContentObjects"
         $AllPaths.Add($Path, $null)
         $result.Add($Cache) | Out-Null
         $result.Add($AllPaths) | Out-Null
@@ -589,7 +591,7 @@ Function Get-AllPaths {
             $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
                 $Cache.Add($_, $null)
             }
-            Write-CMLogEntry -Value ("Could not update cache because could not get shared folders from: `"{0}`"" -f $FQDN) -Severity 2 -Component "GatheringContentObjects"
+            Write-CMLogEntry -Value ("Could not update cache because could not get shared folders from: `"{0}`"" -f $FQDN) -Severity 2 -Component "GatherContentObjects"
         }
     }
 
@@ -601,7 +603,7 @@ Function Get-AllPaths {
         $AltServer = $_
         If ($Cache.$AltServer -ne $null) {
             # Get the share's local path
-            $LocalPath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Key -eq $ShareName } | Select-Object -ExpandProperty Value
+            $LocalPath = $Cache.$AltServer.GetEnumerator().Where( { $_.Key -eq $ShareName } ) | Select-Object -ExpandProperty Value
         }
         Else {
             $LocalPath = $null
@@ -612,14 +614,14 @@ Function Get-AllPaths {
                 # Add \\server\f$\path\to\shared\folder\on\disk
                 $AllPathsArr.Add(("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$')) | Out-Null
                 # Get other shared folders that point to the same path and add them to the AllPaths array
-                $SharesWithSamePath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Value -eq $LocalPath } | Select-Object -ExpandProperty Key
+                $SharesWithSamePath = $Cache.$AltServer.GetEnumerator().Where( { $_.Value -eq $LocalPath } ) | Select-Object -ExpandProperty Key
                 ForEach ($AltShareName in $SharesWithSamePath) {
                     $AllPathsArr.Add("\\$($AltServer)\$($AltShareName)$($ShareRemainder)") | Out-Null
                 }
             }  
         }
         Else {
-            Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`", either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatheringContentObjects"
+            Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`", either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatherContentObjects"
         }
         # Add the original path again but with the alternate server (FQDN / NetBIOS / IP)
         $AllPathsArr.Add("\\$($AltServer)\$($ShareName)$($ShareRemainder)") | Out-Null
@@ -666,7 +668,7 @@ Function Get-AllSharedFolders {
     [hashtable]$AllShares = @{}
 
     try {
-        $Shares = Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop | Where-Object {-not [string]::IsNullOrEmpty($_.Path)}
+        $Shares = (Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop).Where( {-not [string]::IsNullOrEmpty($_.Path)} )
         ForEach ($Share in $Shares) {
             # The TrimEnd method is only really concerned for drive letter shares
             # as they're usually stored as f$ = "F:\" and this messes up Get-AllPaths a little
@@ -775,7 +777,7 @@ Function Start-AltFolderSearch {
     # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
     # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
     # working dir when it reaches a null value, so is null check is needed
-    [System.Collections.ArrayList]$Folders = @(Get-ChildItem -Path $FolderName -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Where-Object { [string]::IsNullOrEmpty($_) -eq $false })
+    [System.Collections.ArrayList]$Folders = @((Get-ChildItem -Path $FolderName -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName).Where( { [string]::IsNullOrEmpty($_) -eq $false } ))
 
     ForEach($Folder in $Folders) {
         $Folders.Add($(Start-AltFolderSearch -FolderName $Folder)) | Out-Null
@@ -794,9 +796,13 @@ Function Test-FileSystemAccess {
     Called by main body.
     .OUTPUTS
     System.Int32
-    0 = ERROR_SUCCESS
-    5 = ERROR_ACCESS_DENIED
-    3 = ERROR_PATH_NOT_FOUND
+    0   = ERROR_SUCCESS
+    3   = ERROR_PATH_NOT_FOUND
+    5   = ERROR_ACCESS_DENIED
+    740 = ERROR_ELEVATION_REQUIRED
+    .NOTES
+        Authors:    Patrick Seymour / Adam Cook
+        Contact:    @codaamok
     #>
     param
     (
@@ -804,9 +810,10 @@ Function Test-FileSystemAccess {
         [System.Security.AccessControl.FileSystemRights]$Rights
     )
 
-    # Thanks to Patrick in Windows Admins slack
-
     [System.Security.Principal.WindowsIdentity]$currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+    $IsElevated = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
     if ([System.IO.Directory]::Exists($Path))
     {
         try
@@ -826,10 +833,16 @@ Function Test-FileSystemAccess {
                         }
                     }
                 }
-                # If execution reaches here you can assume no match for $Rights
-                # Likely to occur if user is in Administrators group and process is not elevated
-                # Although this is not definitive meaning for lack of UAC
-                return 5
+
+                if (($IsElevated -eq $false) -And ($rules.Where( { ($_.IdentityReference -eq "S-1-5-32-544") -And ($_.FileSystemRights -eq $Rights) } )))
+                {
+                    return 740
+                }
+                else
+                {
+                    return 5
+                }
+
             }
             else
             {
@@ -1161,7 +1174,7 @@ $AllFolders | ForEach-Object -Begin {
     $RSPool = [RunspaceFactory]::CreateRunspacePool(1, $Threads, $InitialSessionState, $Host)
     $RSPool.ApartmentState = "MTA"
     $RSPool.Open()
-    $RSResults = @()
+    [System.Collections.Generic.List[Object]]$RSResults = @()
     $RSScriptBlock = {
         Param (
             [string]$RSFolder,
@@ -1171,20 +1184,26 @@ $AllFolders | ForEach-Object -Begin {
         # Initialise the essentials
         $obj = New-Object PSCustomObject
         Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $RSFolder
-        [System.Collections.ArrayList]$UsedBy = @()
+        [System.Collections.Generic.List[String]]$UsedBy = @()
         $IntermediatePath = $false
         $NotUsed = $false
 
-        If ((Test-FileSystemAccess -Path $RSFolder -Rights Read) -eq 5) {
-            $UsedBy.Add("Access denied") | Out-Null
-            # Still continue anyway because we can still determine if it's an exact match or intermediate path of a content object
+        switch (Test-FileSystemAccess -Path $RSFolder -Rights Read) {
+            5 {
+                $UsedBy.Add("Access denied")
+            }
+            740 {
+                $UsedBy.Add("Access denied (elevation required)")
+            }
         }
+
+        # Still continue anyway, despite access denied, because we can still determine if it's an exact match or intermediate path of a content object
 
         # Filtered to exclude SourcePathFlag 3 so we can exclude false positives
         # e.g. if content objects uses \\server\share\folder1\folder2 and $SourcesLocation is \\server\share\folder1
         # but SourcePathFlag is 3, this could report \\server\share\folder1 as intermediate where it may not be
         # Plus, no point iterating over them if we already know that the SourcePath isn't resolvable
-        ForEach ($ContentObject in ($RSAllContentObjects | Where-Object {$_.SourcePathFlag -ne 3})) {
+        ForEach ($ContentObject in ($RSAllContentObjects.Where( {$_.SourcePathFlag -ne 3} ))) {
 
             switch($true) {
                 ([string]::IsNullOrEmpty($ContentObject.SourcePath) -eq $true) {
@@ -1193,13 +1212,13 @@ $AllFolders | ForEach-Object -Begin {
                 }
                 ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.$RSFolder -eq $env:COMPUTERNAME)) {
                     # Content object source path is on local file system to the site server
-                    $UsedBy.Add($ContentObject.Name) | Out-Null
+                    $UsedBy.Add($ContentObject.Name)
                     break
                 }
                 (($ContentObject.AllPaths.Keys -contains $RSFolder) -eq $true) {
                     # By default the ContainsKey method ignores case
                     # A match has been found within the AllPaths property of the content object
-                    $UsedBy.Add($ContentObject.Name) | Out-Null
+                    $UsedBy.Add($ContentObject.Name)
                     break
                 }
                 (($ContentObject.AllPaths.Keys -match [Regex]::Escape($RSFolder)).Count -gt 0) {
@@ -1238,33 +1257,53 @@ $AllFolders | ForEach-Object -Begin {
         return $obj
     }
 
+    <#
+    If ($NoProgress.IsPresent -eq $false) {
+        If ($AllFolders.count -gt 150) {
+            [Int32]$FolderInterval = $AllFolders.count * 0.01
+        }
+        Else {
+            $FolderInterval = 2
+        }
+    }
+    #>
 
 } -Process {
 
     $Folder = $_
+
+    <#
+    If ($NoProgress.IsPresent -eq $false) {
+        If (($AllFolders.IndexOf($Folder) % $FolderInterval) -eq 0) {
+            [Int32]$Percentage = ($AllFolders.IndexOf($Folder) / $AllFolders.count * 100)
+            Write-Host "." -NoNewline
+            Write-Progress -Id 2 -Activity "Adding jobs to queue" -PercentComplete $Percentage -Status ("{0}% complete" -f $Percentage) -ParentId 1
+        }
+    }
+    #>
 
     $Runspace = [PowerShell]::Create()
     $null = $Runspace.AddScript($RSScriptBlock)
     $null = $Runspace.AddArgument($Folder)
     $null = $Runspace.AddArgument($AllContentObjects)
     $Runspace.Runspacepool = $RSPool
-    $RSResults += [PSCustomObject]@{ Pipe = $Runspace; Status = $Runspace.BeginInvoke() }
+    $RSResults.Add( [PSCustomObject]@{ Pipe = $Runspace; Status = $Runspace.BeginInvoke() } )
     
 } -End {
     
-    [System.Collections.ArrayList]$Result = @()
+    [System.Collections.Generic.List[Object]]$Result = @()
 
     # Process runspaces, wait for their results and clean up when complete
     $TotalRunspaces = $RSResults | Measure-Object | Select-Object -ExpandProperty Count
     while ($RSResults.Status -ne $null) {
         If ($NoProgress.IsPresent -eq $false) { 
-            $TotalNotComplete = $RSResults | Where-Object { $_.Status -eq $null } | Measure-Object | Select-Object -ExpandProperty Count
+            $TotalNotComplete = $RSResults.Where( { $_.Status -eq $null } ) | Measure-Object | Select-Object -ExpandProperty Count
             Write-Progress -Id 2 -Activity "Evaluating folders" -Status ("{0} folders remaining" -f ($TotalRunspaces-$TotalNotComplete)) -PercentComplete ($TotalNotComplete/$TotalRunspaces * 100) -ParentId 1
         }
-        $Completed = $RSResults | Where-Object { $_.Status.IsCompleted -eq $true }
+        $Completed = $RSResults.Where( { $_.Status.IsCompleted -eq $true } )
         ForEach ($item in $Completed) {
             # Reference index 0 so we can grab the PSCustomobject inside the PSDataCollection object
-            $Result.Add(($item.Pipe.EndInvoke($item.Status)[0])) | Out-Null
+            $Result.Add(($item.Pipe.EndInvoke($item.Status)[0]))
             $item.Pipe.Dispose()
             $item.Status = $null
         }
@@ -1274,25 +1313,44 @@ $AllFolders | ForEach-Object -Begin {
     # Clean up runspace pool
     $RSPool.Dispose()
 
+    Write-CMLogEntry -Value "Done determining unused folders" -Severity 1 -Component "Processing" -WriteHost
+
     # Update Write-Progress
     If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Evaluating folders" -Completed -ParentId 1 }
     If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 100 -Status "Finishing up" }
 
-    Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit"
+    Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
     If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
 
     # Calculate total MB used for each "Not used" folder
     # This is wasteful if -HtmlReport is not specified, but I really wanted $SummaryNotUsedFolders total in end result stats
-    $NotUsedFolders = $Result | Where-Object { $_.UsedBy -eq "Not used" } | Select-Object -ExpandProperty Folder | Measure-ChildItem -Unit MB -Digits 2
+    $NotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
 
     # Calculate total MB used on size unused by ConfigMgr
-    [System.Collections.ArrayList]$dropped = @()                   
-    $SummaryNotUsedFolders = $NotUsedFolders | Where-Object { $_ -notin $dropped } | ForEach-Object {
+    $SummaryNotUsedFolders = $NotUsedFolders | Sort-Object Folder | ForEach-Object {
         $current = $_
-        $others = $NotUsedFolders | Where-Object { $_.Path -ne $current.Path -And $_.Path.StartsWith($current.Path) }
-        $dropped.Add($others) | Out-Null
+        If (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
+            #
+        }
+        Else {
+            $previous = $current
+            $current.Folder | Measure-ChildItem -Unit MB -Digits 2
+        }
+    }
+
+    Write-CMLogEntry -Value "Done calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
+
+    <#
+    # Calculate total MB used on size unused by ConfigMgr
+    [System.Collections.Generic.List[object]]$dropped = @()                   
+    $SummaryNotUsedFolders = $NotUsedFolders.Where( { $_ -notin $dropped } ) | ForEach-Object {
+        $current = $_
+        #$others = $NotUsedFolders.Where( { $_.Path -ne $current.Path -And $_.Path.StartsWith($current.Path) } )
+        $others = $NotUsedFolders.Select(("Path <> '{0}' And Path like '{1}%'" -f $current.Path,$current.Path))
+        $dropped.Add($others)
         $current
     }
+    #>
 
     $SummaryNotUsedFoldersMB = $SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum
     $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
@@ -1322,6 +1380,7 @@ $AllFolders | ForEach-Object -Begin {
             Write-CMLogEntry -Value "Exporting PowerShell return object" -Severity 1 -Component "Exit" -WriteHost
             If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell return object" -PercentComplete 50 -ParentId 1 }
             Export-Clixml -LiteralPath (($PSCommandPath | Split-Path -Parent) + "\" + ($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + "_result.xml") -InputObject $Result
+            Write-CMLogEntry -Value "Done exporting PowerShell return object" -Severity 1 -Component "Exit" -WriteHost
         }
         catch {
             Write-CMLogEntry -Value ("Failed to export PowerShell object: {0}" -f $error[0].Exception.Message) -Severity 3 -Component "Exit" -WriteHost
@@ -1334,6 +1393,7 @@ $AllFolders | ForEach-Object -Begin {
             Write-CMLogEntry -Value "Exporting PowerShell ConfigMgr content objects object" -Severity 1 -Component "Exit" -WriteHost
             If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell ConfigMgr content objects object" -PercentComplete 75 -ParentId 1 }
             Export-Clixml -LiteralPath (($PSCommandPath | Split-Path -Parent) + "\" + ($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + "_cmobjects.xml") -InputObject $AllContentObjects
+            Write-CMLogEntry -Value "Done exporting PowerShell ConfigMgr content objects object" -Severity 1 -Component "Exit" -WriteHost
         }
         catch {
             Write-CMLogEntry -Value ("Failed to export PowerShell object: {0}" -f $error[0].Exception.Message) -Severity 3 -Component "Exit" -WriteHost
@@ -1380,7 +1440,7 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($NotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount) -PreContent {
+                            New-HTMLTable -DataTable $NotUsedFolders -PreContent {
                                 "<span style='font-size: 1.2em; margin-left: 1em;'>All folders that were determined not used under the given path by the searched content objects.</span>"
                             }
                         }
@@ -1390,7 +1450,7 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($AllContentObjects | Where-Object { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths) -PreContent {
+                            New-HTMLTable -DataTable ($AllContentObjects.Where( { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths) -PreContent {
                                 "<span style='font-size: 1.2em; margin-left: 1em;'>All content objects that have a source path which are not accessible from the computer that ran this script (`"{0}`").</span>" -f $env:COMPUTERNAME
                             }
                         }
@@ -1407,6 +1467,8 @@ $AllFolders | ForEach-Object -Begin {
                     }
                 }
             }
+            If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating HTML report" -Completed -ParentId 1 }
+            Write-CMLogEntry -Value "Done creating HTML report" -Severity 1 -Component "Exit" -WriteHost
         }
         catch {
             Write-CMLogEntry -Value ("Failed to create HTML report: {0}" -f $error[0]) -Severity 3 -Component "Exit" -WriteHost
@@ -1416,12 +1478,10 @@ $AllFolders | ForEach-Object -Begin {
     # Stop clock for runtime
     $StopTime = (Get-Date) - $StartTime
 
-    If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating HTML report" -Completed -ParentId 1 }
-
     # Write summary to log
     Write-CMLogEntry -Value ("Content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders at {0}: {1}" -f $SourcesLocation, $AllFolders.count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders where access denied: {0}" -f ($Result | Where-Object { $_.UsedBy -like "Access denied*" } | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Folders where access denied: {0}" -f ($Result.Where( { $_.UsedBy -like "Access denied*" } ) | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders unused: {0}" -f ($NotUsedFolders | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): {2} MB" -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", "), $SummaryNotUsedFoldersMB) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Runtime: {0}" -f $StopTime.ToString()) -Severity 1 -Component "Exit" -WriteHost
