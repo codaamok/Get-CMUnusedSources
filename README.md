@@ -28,7 +28,7 @@ The `UsedBy` property can have one or more of the following values:
 
 - A list of names for the content objects used by the folder.*
 - `An intermediate folder (sub or parent folder)`: a sub or parent folders of a folder used by a content object.
-- `Access denied`: a folder that the user running the script does not have read access to.
+- `Access denied` or `Access denied (elevation required`): a folder that the user running the script does not have read access to.
 - `Not used`: a folder that is not used by any content objects.
 
 \* for Applications, the naming convention will be `<Application name>::<Deployment Type name>`.
@@ -70,7 +70,7 @@ Folder                                    UsedBy
 
 ## Getting started
 
-1. Download Get-CMUnusedSources.ps1
+1. Download `Get-CMUnusedSources.ps1`s
 2. Check out the examples below and read through the parameters available. If you're eager, then calling the script as is and only providing values for the mandatory parameters will get you going under the default conditions (_see below_).
 
 ## Default conditions
@@ -91,19 +91,19 @@ Running the script without anything other than the mandatory parameters will do 
 ## What can it do
 
 - You can execute this script remotely from a site server. It makes zero changes to your ConfigMgr site. It's purely for reporting.
-- The result is returned as an array of PSObjects.
+- The returned object by the script is an array of PSObjects.
 - `-SourcesLocation` can be a UNC or local path and works around the 260 MAX_PATH limit.
 - `-Threads` to control how many threads are used for concurrent processing.
-- Optionally exports PowerShell objects to file of either all your ConfigMgr content objects and/or the final report. You can later reimport these using `Import-Clixml`.
+- Optionally exports PowerShell objects to file of either all your ConfigMgr content objects or the result. You can later reimport these using `Import-Clixml`.
 - Optionally create a HTML report where you can then export to CSV/PDF/XSLX.
 - Optionally filter the ConfigMgr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
-- Optionally create a log file, enable log rotation, set a maximum log file size and how many rotated log files to keep.
+- Optionally create a log file.
 - Optionally produce a HTML report, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 
 ## Examples
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -LogFileSize 2MB -ExportReturnObject -HtmlReport -Threads 2
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -ExportReturnObject -HtmlReport -Threads 2
 ```
 
 - Gather all content objects relevant to site code `XYZ`.
@@ -116,27 +116,19 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -
 ---
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -NumOfRotatedLogs 3 -NoProgress -ExportReturnObject -ExportCMContentObjects -Packages -Applications -OSImages -OSUpgradeImages -HtmlReport
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -NoProgress -ExportReturnObject -ExportCMContentObjects -Packages -Applications -OSImages -OSUpgradeImages -HtmlReport
 ```
 
 - Gather all content objects relevant to site code `XYZ`.
 - Gather all folders under `F:\some\folder`.
-- A log file will be created in the same directory as the script and rolled over when it reaches 5MB, keeping a maximum of 4 log files throughout execution (current log file plus 3 rolled).
+- A log file will be created in the same directory as the script and rolled over when it reaches 2MB, with no limit on number of rotated logs to keep.
 - Surpress PowerShell progress (`Write-Progress`).
 - Exports the result PowerShell object to file saved in the same directory as the script.
 - Exports all searched ConfigMgr content objects to file saved in the same directory as the script.
 - Gathers only Packages, Applications, Operating System images and Operating System upgrade images content objects.
 - Produces a HTML report saved in the same directory as the script. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 - Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` because that's the default value of `-Threads`.
-- Returns the result PowerShell object to variable `$result`.
-
----
-
-```powershell
-PS C:\>
-```
-
-Another example here
+- Returns the result PowerShell object to variable `$result`
 
 ## Runtime stats
 
@@ -152,7 +144,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -
 
 ## Process overview
 
-The process begins by gathering all (or selective) ConfigMgr content objects within a hierarchy by site code using the ConfigMgr cmdlets. It also recursively gathers all folders under `-SourcesLocation`.
+The process begins by gathering all (or selective) ConfigMgr content objects within a hierarchy, filtered by site code, using the ConfigMgr cmdlets. It also recursively gathers all folders under `-SourcesLocation`.
 
 > **Note:** It's OK if you see "Access denied" exceptions printed to console, the script will handle these and report accordingly.
 
@@ -181,7 +173,7 @@ The `UsedBy` property can have one or more of the following values:
 
 - A list of names for the content objects used by the folder.*
 - `An intermediate folder (sub or parent folder)`: a sub or parent folders of a folder used by a content object.
-- `Access denied`: a folder that the user running the script does not have read access to.
+- `Access denied` or `Access denied (elevation required)`: a folder that the user running the script does not have read access to.
 - `Not used`: a folder that is not used by any content objects.
 
 \* for Applications, the naming convention will be `<Application name>::<Deployment Type name>`.
@@ -361,13 +353,41 @@ A common result you'll see here, if you run the script remote from a site server
 
 All searched ConfigMgr content objects. For example, if you specified `-Drivers` and `-DriverPackages` then it would only show you Driver and DriverPackage content object types, because that's all that was gathered.
 
-(Todo: Explain HTML table output, especially the invalid path bit with local paths)
-
 ## The log file explained
 
 You'll need CMTrace to read it.
 
-If you specify `-Log` it can be quite noisy. It prints not just the progress, e.g. gathering folders and gathering content objects, but it also prints all content objects, their properties and the final result which is all folders under `-SourcesLocation` and their `UsedBy` status. 
+The log will display everything you see printed to console as well as gathered content object properties and the result.
+
+After gathering each content object, it will log all of those content objects and their properties like so: 
+
+> ContentType - UniqueId - Name - SourcePath - SourcePathFlag - AllPaths
+
+Example: 
+
+> Application - DeploymentType_1cd4198d-bb1f-41a8-ad3e-a81f4d8f1d44 - PuTTY 0.71::PuTTY x64 - \\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64\\ - 0 - \\\\fileserver\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,F:\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications1992\\putty\\putty 0.71\\PuTTY x64
+
+The result of the script is also written to log like so:
+
+> Folder: UsedBy
+
+Example:
+
+```
+...
+\\fileserver\Applications$\python3: An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\python3\python3 3.7.3: An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\python3\python3 3.7.3\Python x64: Python 3.7.3::Python x64
+\\fileserver\Applications$\python3\python3 3.7.3\Python x86: Python 3.7.3::Python x86
+\\fileserver\Applications$\treesizefree: An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\treesizefree\treesizefree 4.3.1: An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\treesizefree\treesizefree 4.3.1\TreeSize Free: TreeSize Free 4.3.1::TreeSize Free
+\\fileserver\Applications$\vlc: An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\vlc\vlc 3.06: An intermediate folder (sub or parent folder)
+\\fileserver\Applications$\vlc\vlc 3.06\VLC x64: VLC Media Player 3.06::VLC x64
+\\fileserver\Applications$\vlc\vlc 3.06\VLC x86: VLC Media Player 3.06::VLC x86
+...
+```
 
 You may spot some highlighted yellow warnings or red errors so I'll explain some of them here.
 
@@ -519,15 +539,7 @@ Specify this to disable use of Write-Progress.
 
 ### -Log
 
-Specify this to enable logging. The log file(s) will be saved to the same directory as this script with a name of `<scriptname>_<datetime>.log`. Rolled log files will follow a naming convention of `<filename>_1.lo_` where the int increases for each rotation.
-
-### -LogFileSize
-
-Set the maximum size you want for each rolled over log file. This is only applicable if NumOfRotatedLogs is greater than 0. Default value is 5MB. The unit of measurement is bytes however you can specify units such as KB, MB etc.
-
-### -NumOfRotatedLogs
-
-Set the maximum number of log files you wish to keep. Default value is 5MB. Specify `0` for unlimited.
+Specify this to enable logging. The log file(s) will be saved to the same directory as this script with a name of `<scriptname>_<datetime>.log`. Rolled log files will follow a naming convention of `<filename>_1.lo_` where the int increases for each rotation. Each maximum log file is 2MB.
 
 ### -ExportReturnObject
 
@@ -565,4 +577,4 @@ Big thanks to folks in [Windows Admins slack](https://slofile.com/slack/winadmin
 - Chris Kibble ([@ChrisKibble](https://github.com/ChrisKibble))
 - Chris Dent ([@idented-automation](https://github.com/indented-automation))
 - Kevin Crouch ([@PsychoData](https://github.com/PsychoData))
-- Patrick (the guy who wrote [MakeMeAdmin](https://makemeadmin.com/))
+- Patrick Seymour ([@pseymour](https://github.com/pseymour))

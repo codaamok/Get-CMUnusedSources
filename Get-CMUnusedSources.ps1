@@ -46,13 +46,7 @@ Specify this if you suspect there are issue with the default mechanism of gather
 Specify this to disable use of Write-Progress.
 
 .PARAMETER Log
-Specify this to enable logging. The log file(s) will be saved to the same directory as this script with a name of <scriptname>_<datetime>.log. Rolled log files will follow a naming convention of <filename>_1.lo_ where the int increases for each rotation.
-
-.PARAMETER LogFileSize
-Set the maximum size you want for each rolled over log file. This is only applicable if NumOfRotatedLogs is greater than 0. Default value is 5MB. The unit of measurement is bytes however you can specify units such as KB, MB etc.
-
-.PARAMETER NumOfRotatedLogs
-Set the maximum number of log files you wish to keep. Default value is 5MB. Specify 0 for unlimited.
+Specify this to enable logging. The log file(s) will be saved to the same directory as this script with a name of <scriptname>_<datetime>.log. Rolled log files will follow a naming convention of <filename>_1.lo_ where the int increases for each rotation. Each maximum log file is 2MB.
 
 .PARAMETER ExportReturnObject
 Specify this option if you wish to export the PowerShell return object to an XML file. The XML file be saved to the same directory as this script with a name of <scriptname>_<datetime>_result.xml. It can easily be reimported using Import-Clixml cmdlet.
@@ -68,16 +62,19 @@ Set the number of threads you wish to use for concurrent processing of this scri
 
 .INPUTS
 
-.EXAMPLE
+.OUTPUTS
 
+.EXAMPLE
 C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation \\sccm\Applications$ -SiteCode ACC -SiteServer SCCM -Applications -Log -LogFileSize 10MB -NumOfRotatedLogs 5 -ExportReturnObject -HtmlReport -Threads 2
 
 .EXAMPLE
-
 C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation F:\ -SiteCode ACC -SiteServer SCCM -Log -HtmlReport
 
 .NOTES
-
+Author:     Adam Cook (@codaamok)
+Updated:    19/07/2019
+License:    GLP-3.0
+Source:     https://github.com/codaamok/Get-CMUnusedSources  
 #>
 #Requires -Version 5.1
 Param (
@@ -126,11 +123,6 @@ Param (
     [switch]$NoProgress,
     [Parameter(Mandatory=$false, HelpMessage="Enable logging.")]
     [switch]$Log,
-    [Parameter(Mandatory=$false, HelpMessage="Maximum size per log file.")]
-    [ValidatePattern("^(?i)[0-9]+(mb|kb|gb)?$")]
-    [int32]$LogFileSize = 5MB,
-    [Parameter(Mandatory=$false, HelpMessage="Maximum number of rotated log files to keep.")]
-    [int32]$NumOfRotatedLogs = 0,
     [Parameter(Mandatory=$false, HelpMessage="Generate XML export of PowerShell object with the result.")]
     [switch]$ExportReturnObject,
     [Parameter(Mandatory=$false, HelpMessage="Generate XML export of PowerShell object with all ConfigMgr content objects.")]
@@ -148,13 +140,8 @@ TODO:
         - publish to technet/github/psgallery
         - delete log entries for $result??
         - if given F:\ or \\server\f$ currently Get-AllPaths does not determine shared folders that match the path used
-
-    Test plan:
-        - validate results
-            - write up demoing -exportcmcontentobjects:
-            -- Compare it against "unused folders"
-            -- Verify all content objects source path (with successful flag)
-            -- undeterminded content objects? compare-object?
+        - improve write-progress for -Process of main execution
+        - test -altfoldersearch with use of where() and not where-object
 #>
 
 <#
@@ -168,16 +155,12 @@ $PSDefaultParameterValues["Write-CMLogEntry:Bias"]=(Get-WmiObject -Class Win32_T
 $PSDefaultParameterValues["Write-CMLogEntry:Folder"]=($PSCommandPath | Split-Path -Parent)
 $PSDefaultParameterValues["Write-CMLogEntry:FileName"]=(($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + ".log")
 $PSDefaultParameterValues["Write-CMLogEntry:Enable"]=$Log.IsPresent
-$PSDefaultParameterValues["Write-CMLogEntry:MaxLogFileSize"]=$LogFileSize
-$PSDefaultParameterValues["Write-CMLogEntry:MaxNumOfRotatedLogs"]=$NumOfRotatedLogs
+$PSDefaultParameterValues["Write-CMLogEntry:MaxLogFileSize"]=2MB
+$PSDefaultParameterValues["Write-CMLogEntry:MaxNumOfRotatedLogs"]=0
 $PSDefaultParameterValues["New-HTMLContent:SelectorColor"]="DeepSkyBlue"
 $PSDefaultParameterValues["New-HTMLContent:HeaderBackGroundColor"]="DeepSkyBlue"
 $PSDefaultParameterValues["New-HTMLTable:DisableColumnReorder"]=$true
-$PSDefaultParameterValues["New-HTMLTable:HideFooter"]=$true
-$PSDefaultParameterValues["New-HTMLTable:FixedHeader"]=$true
-$PSDefaultParameterValues["New-HTMLTable:DisablePaging"]=$true
 $PSDefaultParameterValues["New-HTMLTable:ScrollX"]=$true
-$PSDefaultParameterValues["New-HTMLTable:Buttons"]=("copyHtml5", "excelHtml5", "csvHtml5", "pdfHtml5")
 $PSDefaultParameterValues["New-HTMLTable:TextWhenNoData"]="None"
 
 <#
@@ -321,10 +304,10 @@ Function Get-CMContent {
     Get all ConfigMgr objects that can hold content, i.e. content objects.
     .DESCRIPTION
     Using the ConfigMgr PoSH cmdlets, in the $Commands array, get all content objects and filter them to the given site code. 
-    For each content object, create a PSCustomObject with the needed properties and return them all in an ArrayList collection.
+    For each content object, create a PSCustomObject with the needed properties.
     Called by main body.
     .OUTPUTS
-    System.Object.ArrayList where each element will be a content object of System.Object.PSCustomObject.
+    System.Object.PSCustomObject
     #>
     Param(
         [Parameter(Mandatory=$true,ValueFromPipeline=$true)]
@@ -335,13 +318,12 @@ Function Get-CMContent {
         [string]$SiteCode
     )
     Begin {
-        [System.Collections.ArrayList]$AllContent = @()
         [hashtable]$ShareCache = @{}
     }
     Process {
         ForEach ($Command in $Commands) {
 
-            Write-CMLogEntry -Value ("Getting: {0}" -f $Command -replace "Get-CM") -Severity 1 -Component "GatherContentObjects"
+            Write-CMLogEntry -Value ("Gathering: {0}" -f $Command -replace "Get-CM") -Severity 1 -Component "GatherContentObjects"
 
             # Filter by site code
             $Command = $Command + " | Where-Object SourceSite -eq `"{0}`"" -f $SiteCode
@@ -361,20 +343,21 @@ Function Get-CMContent {
                                 $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer
 
                                 # Create content object PSObject with needed properties and add to array
-                                $obj = New-Object PSObject
-                                Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Application"
-                                Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value ($DeploymentType | Select-Object -ExpandProperty LogicalName)
-                                Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value ("{0}::{1}" -f $item.LocalizedDisplayName,$DeploymentType.Title.InnerText)
-                                Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                                Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathFlag -Value (Test-FileSystemAccess -Path $SourcePath -Rights Read)
-                                Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                                $AllContent.Add($obj) | Out-Null
+                                $obj = [PSCustomObject]@{
+                                    ContentType     = "Application"
+                                    UniqueID        = $DeploymentType | Select-Object -ExpandProperty LogicalName
+                                    Name            = "{0}::{1}" -f $item.LocalizedDisplayName,$DeploymentType.Title.InnerText
+                                    SourcePath      = $SourcePath
+                                    SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
+                                    AllPaths        = $GetAllPathsResult[1]
+                                }
+                                $obj
                             }
 
                             # Maintaining cache of shared folders for servers encountered so far
                             $ShareCache = $GetAllPathsResult[0]
 
-                            Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
+                            Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4} - {5}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.SourcePathFlag,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
                         }
                     }
                     "^Get-CMDriver\s.+" { 
@@ -383,19 +366,20 @@ Function Get-CMContent {
                         $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer 
                         
                         # Create content object PSObject with needed properties and add to array
-                        $obj = New-Object PSObject
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value "Driver"
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.CI_ID
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.LocalizedDisplayName
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathFlag -Value (Test-FileSystemAccess -Path $SourcePath -Rights Read)
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                        $AllContent.Add($obj) | Out-Null
+                        $obj = [PSCustomObject]@{
+                            ContentType     = "Driver"
+                            UniqueID        = $item.CI_ID
+                            Name            = $item.LocalizedDisplayName
+                            SourcePath      = $SourcePath
+                            SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
+                            AllPaths        = $GetAllPathsResult[1]
+                        }
+                        $obj
 
                         # Maintaining cache of shared folders for servers encountered so far
                         $ShareCache = $GetAllPathsResult[0]
 
-                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
+                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4} - {5}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.SourcePathFlag,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
                     }
                     default {
                         # OS images and boot iamges are absolute paths to files
@@ -411,27 +395,25 @@ Function Get-CMContent {
                         $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer
 
                         # Create content object PSObject with needed properties and add to array
-                        $obj = New-Object PSObject
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name ContentType -Value $ContentType
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name UniqueID -Value $item.PackageId
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name Name -Value $item.Name
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePath $SourcePath
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name SourcePathFlag -Value (Test-FileSystemAccess -Path $SourcePath -Rights Read)
-                        Add-Member -InputObject $obj -MemberType NoteProperty -Name AllPaths -Value $GetAllPathsResult[1]
-                        $AllContent.Add($obj) | Out-Null
+                        $obj = [PSCustomObject]@{
+                            ContentType     = $ContentType
+                            UniqueID        = $item.PackageId
+                            Name            = $item.Name
+                            SourcePath      = $SourcePath
+                            SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
+                            AllPaths        = $GetAllPathsResult[1]
+                        }
+                        $obj
 
                         # Maintaining cache of shared folders for servers encountered so far
                         $ShareCache = $GetAllPathsResult[0]
 
-                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
+                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4} - {5}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.SourcePathFlag,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
                     }   
                 }
             }
             Write-CMLogEntry -Value ("Done gathering: {0}" -f ($Command -replace "Get-CM").Split(" ")[0]) -Severity 1 -Component "GatherContentObjects"
         }
-    }
-    End {
-        return $AllContent
     }
 }
 
@@ -444,7 +426,7 @@ Function Get-AllPaths {
     Useful to determine the local path for a given UNC path (in turn get the UNC path that uses the drive $ share), or if a there are multiple shared folders pointing to the same location. 
     Called by Get-CMContent.
     .OUTPUTS
-    System.Object.ArrayList with always only two elements; $AllPaths (hashtable, the calculated list of "all paths" for the given $Path), and $Cache (hashtable, the shared folders cache).
+    System.Object.List with always only two elements; $AllPaths (hashtable, the calculated list of "all paths" for the given $Path), and $Cache (hashtable, the shared folders cache).
     The first element ($Cache, hashtable) of the $result collection is dedicated to being a cache which will contain a list of all servers (key) and a hashtable (value) for a list of shared folder names and their local paths.
     The second element ($AllPath, hashtable) of the $result collection contains the list of all possible paths associated with the given $Path (key) and the NetBIOS server name (value) of which it belongs to. 
     .EXAMPLE
@@ -472,7 +454,7 @@ Function Get-AllPaths {
         [string]$SiteServer
     )
 
-    [System.Collections.ArrayList]$result = @()
+    [System.Collections.Generic.List[Object]]$result = @()
     [hashtable]$AllPaths = @{}
 
     If (([string]::IsNullOrEmpty($Path) -eq $false) -And ($Path -notmatch "^[a-zA-Z]:\\$")) {
@@ -511,14 +493,14 @@ Function Get-AllPaths {
             # Path that is local
             # Script does not determine UNC / shared folder paths if the content object source path is a local path
             $AllPaths.Add($Path, $SiteServer)
-            $result.Add($Cache) | Out-Null
-            $result.Add($AllPaths) | Out-Null
+            $result.Add($Cache)
+            $result.Add($AllPaths)
             return $result
         }
         ([string]::IsNullOrEmpty($Path) -eq $true) {
             # If there is no source path, just return now with $AllPaths empty
-            $result.Add($Cache) | Out-Null
-            $result.Add($AllPaths) | Out-Null
+            $result.Add($Cache)
+            $result.Add($AllPaths)
             return $result
         }
         default { 
@@ -528,8 +510,8 @@ Function Get-AllPaths {
             Write-Warning $Message
             Write-CMLogEntry -Value $Message -Severity 2 -Component "GatherContentObjects"
             $AllPaths.Add($Path, $null)
-            $result.Add($Cache) | Out-Null
-            $result.Add($AllPaths) | Out-Null
+            $result.Add($Cache)
+            $result.Add($AllPaths)
             return $result
         }
     }
@@ -566,10 +548,10 @@ Function Get-AllPaths {
     }
     Else {
         # Won't be able to query Win32_Class if unreachable so no point continuing
-        Write-CMLogEntry -Value ("Server `"{0}`" is unreachable" -f $Server) -Severity 2 -Component "GatheringContentObjects"
+        Write-CMLogEntry -Value ("Server `"{0}`" is unreachable" -f $Server) -Severity 2 -Component "GatherContentObjects"
         $AllPaths.Add($Path, $null)
-        $result.Add($Cache) | Out-Null
-        $result.Add($AllPaths) | Out-Null
+        $result.Add($Cache)
+        $result.Add($AllPaths)
         return $result
     }
 
@@ -589,19 +571,19 @@ Function Get-AllPaths {
             $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
                 $Cache.Add($_, $null)
             }
-            Write-CMLogEntry -Value ("Could not update cache because could not get shared folders from: `"{0}`"" -f $FQDN) -Severity 2 -Component "GatheringContentObjects"
+            Write-CMLogEntry -Value ("Could not update cache because could not get shared folders from: `"{0}`"" -f $FQDN) -Severity 2 -Component "GatherContentObjects"
         }
     }
 
     ##### Build the AllPaths property
 
-    [System.Collections.ArrayList]$AllPathsArr = @()
+    [System.Collections.Generic.List[String]]$AllPathsArr = @()
 
     $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object -Process {
         $AltServer = $_
         If ($Cache.$AltServer -ne $null) {
             # Get the share's local path
-            $LocalPath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Key -eq $ShareName } | Select-Object -ExpandProperty Value
+            $LocalPath = $Cache.$AltServer.GetEnumerator().Where( { $_.Key -eq $ShareName } ) | Select-Object -ExpandProperty Value
         }
         Else {
             $LocalPath = $null
@@ -610,30 +592,30 @@ Function Get-AllPaths {
         If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
             If ($PathType -match "1|2") {
                 # Add \\server\f$\path\to\shared\folder\on\disk
-                $AllPathsArr.Add(("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$')) | Out-Null
+                $AllPathsArr.Add(("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$'))
                 # Get other shared folders that point to the same path and add them to the AllPaths array
-                $SharesWithSamePath = $Cache.$AltServer.GetEnumerator() | Where-Object { $_.Value -eq $LocalPath } | Select-Object -ExpandProperty Key
+                $SharesWithSamePath = $Cache.$AltServer.GetEnumerator().Where( { $_.Value -eq $LocalPath } ) | Select-Object -ExpandProperty Key
                 ForEach ($AltShareName in $SharesWithSamePath) {
-                    $AllPathsArr.Add("\\$($AltServer)\$($AltShareName)$($ShareRemainder)") | Out-Null
+                    $AllPathsArr.Add("\\$($AltServer)\$($AltShareName)$($ShareRemainder)")
                 }
             }  
         }
         Else {
-            Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`", either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatheringContentObjects"
+            Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`" from cache, either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatherContentObjects"
         }
         # Add the original path again but with the alternate server (FQDN / NetBIOS / IP)
-        $AllPathsArr.Add("\\$($AltServer)\$($ShareName)$($ShareRemainder)") | Out-Null
+        $AllPathsArr.Add("\\$($AltServer)\$($ShareName)$($ShareRemainder)")
     } -End {
         If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
             # Either of the below are important in case user is running local to site server and gave local path as $SourcesLocation
             If (($LocalPath -match "^[a-zA-Z]:$") -And ($PathType -match "2|4")) {
                 # Match if just a drive letter (WHY?!) and add it to AllPaths array
                 # This occurs if path type is 2 and the share points to root of a volume
-                $AllPathsArr.Add("$($LocalPath)\") | Out-Null
+                $AllPathsArr.Add("$($LocalPath)\")
             }
             Else {
                 # Add the local path to AllPaths array
-                $AllPathsArr.Add("$($LocalPath)$($ShareRemainder)") | Out-Null
+                $AllPathsArr.Add("$($LocalPath)$($ShareRemainder)")
             }
         }
     }
@@ -646,8 +628,8 @@ Function Get-AllPaths {
         }
     }
 
-    $result.Add($Cache) | Out-Null
-    $result.Add($AllPaths) | Out-Null
+    $result.Add($Cache)
+    $result.Add($AllPaths)
     return $result
 }
 
@@ -666,7 +648,7 @@ Function Get-AllSharedFolders {
     [hashtable]$AllShares = @{}
 
     try {
-        $Shares = Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop | Where-Object {-not [string]::IsNullOrEmpty($_.Path)}
+        $Shares = (Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop).Where( {-not [string]::IsNullOrEmpty($_.Path)} )
         ForEach ($Share in $Shares) {
             # The TrimEnd method is only really concerned for drive letter shares
             # as they're usually stored as f$ = "F:\" and this messes up Get-AllPaths a little
@@ -688,7 +670,7 @@ Function Get-AllFolders {
     Get all folders in $Path. By default this function escapes the max path limit by prefixing $Path with the following: "\\?\UNC". This is what _mostly_ the driver for the PoSH 5.1 requirement.
     Called by main body.
     .OUTPUTS
-    System.Object.ArrayList of folder full names.
+    System.Object.Generic.List[String] of folder full names.
     #>
     Param(
         [string]$Path,
@@ -718,11 +700,11 @@ Function Get-AllFolders {
     
     # Recursively get all folders
     If ($DiffFolderSearch -eq $true) {
-        [System.Collections.ArrayList]$Folders = Start-AltFolderSearch -FolderName $Path
+        [System.Collections.Generic.List[String]]$Folders = Start-AltFolderSearch -FolderName $Path
     }
     Else {
         try {
-            [System.Collections.ArrayList]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse | Select-Object -ExpandProperty FullName
+            [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse | Select-Object -ExpandProperty FullName
         }
         catch {
             $Message = "Consider using -AltFolderSearch, quiting..."
@@ -731,7 +713,7 @@ Function Get-AllFolders {
         }
     }
 
-    $Folders.Add($Path) | Out-Null
+    $Folders.Add($Path)
     
     # Undo the \\?\ prefix
     switch ($true) {
@@ -768,17 +750,17 @@ Function Start-AltFolderSearch {
     Massive thanks to Chris Kibble for coming up with this work around and time to help troubleshoot!
     Called by Get-AllFolders.
     .OUTPUTS
-    System.Object.ArrayList of folder full names.
+    System.Object.Generic.List[String] of folder full names.
     #>
     Param([string]$FolderName)
 
     # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
     # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
     # working dir when it reaches a null value, so is null check is needed
-    [System.Collections.ArrayList]$Folders = @(Get-ChildItem -Path $FolderName -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName | Where-Object { [string]::IsNullOrEmpty($_) -eq $false })
+    [System.Collections.Generic.List[String]]$Folders = @((Get-ChildItem -Path $FolderName -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName).Where( { [string]::IsNullOrEmpty($_) -eq $false } ))
 
     ForEach($Folder in $Folders) {
-        $Folders.Add($(Start-AltFolderSearch -FolderName $Folder)) | Out-Null
+        $Folders.Add($(Start-AltFolderSearch -FolderName $Folder))
     }
 
     return $Folders
@@ -787,26 +769,37 @@ Function Start-AltFolderSearch {
 Function Test-FileSystemAccess {
     <#
     .SYNOPSIS
-    Check for read access on a given folder.
-    .DESCRIPTION
-    This is a very fast method of checking for read access on $Path by pulling access rules and comparing it to the ID to the user's context running this cricket.
-    I can not take any credit for this function. Huge thanks to Patrick in WinAdmins Slack!
-    Called by main body.
+        Check for file system access on a given folder.
     .OUTPUTS
-    System.Int32
-    0 = ERROR_SUCCESS
-    5 = ERROR_ACCESS_DENIED
-    3 = ERROR_PATH_NOT_FOUND
+        [System.Enum]
+        ERROR_SUCCESS (0)
+        ERROR_PATH_NOT_FOUND (3)
+        ERROR_ACCESS_DENIED (5)
+        ERROR_ELEVATION_REQUIRED (740)
+    .NOTES
+        Authors:    Patrick Seymour / Adam Cook
+        Contact:    @pseymour / @codaamok
     #>
     param
     (
+        [Parameter(Mandatory=$false)]
         [string]$Path,
+        [Parameter(Mandatory=$true)]
         [System.Security.AccessControl.FileSystemRights]$Rights
     )
 
-    # Thanks to Patrick in Windows Admins slack
+    enum FileSystemAccessState {
+        ERROR_SUCCESS
+        ERROR_PATH_NOT_FOUND = 3
+        ERROR_ACCESS_DENIED = 5
+        ERROR_ELEVATION_REQUIRED = 740
+    }
 
     [System.Security.Principal.WindowsIdentity]$currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    [System.Security.Principal.WindowsPrincipal]$currentPrincipal = New-Object Security.Principal.WindowsPrincipal($currentIdentity)
+    $IsElevated = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $IsInAdministratorsGroup = $currentIdentity.Claims.Value -contains "S-1-5-32-544"
+
     if ([System.IO.Directory]::Exists($Path))
     {
         try
@@ -822,39 +815,46 @@ Function Test-FileSystemAccess {
                         [System.Security.AccessControl.FileSystemAccessRule]$fileSystemRule = [System.Security.AccessControl.FileSystemAccessRule]$rules[$i]
                         if ($fileSystemRule.FileSystemRights.HasFlag($Rights))
                         {
-                            return 0
+                            return [FileSystemAccessState]::ERROR_SUCCESS
                         }
                     }
                 }
-                # If execution reaches here you can assume no match for $Rights
-                # Likely to occur if user is in Administrators group and process is not elevated
-                # Although this is not definitive meaning for lack of UAC
-                return 5
+
+                if (($IsElevated -eq $false) -And ($IsInAdministratorsGroup -eq $true) -And ($rules.Where( { ($_.IdentityReference -eq "S-1-5-32-544") -And ($_.FileSystemRights.HasFlag($Rights)) } )))
+                {
+                    # At this point we were able to read ACL and verify Administrators group access, likely because we were qualified by the object set as owner
+                    return [FileSystemAccessState]::ERROR_ELEVATION_REQUIRED
+                }
+                else
+                {
+                    return [FileSystemAccessState]::ERROR_ACCESS_DENIED
+                }
+
             }
             else
             {
-                return 5
+                return [FileSystemAccessState]::ERROR_ACCESS_DENIED
             }
         }
         catch
         {
-            return 5
+            return [FileSystemAccessState]::ERROR_ACCESS_DENIED
         }
     }
     else
     {
-        return 3
+        return [FileSystemAccessState]::ERROR_PATH_NOT_FOUND
     }
 }
 
 Function Measure-ChildItem {
     <#
     .SYNOPSIS
-        Recursively measures the size of a directory.
+    Recursively measures the size of a directory.
     .NOTES
-        Author: Chris Dent (indented-automation) https://github.com/indented-automation
-        Source: https://github.com/steviecoaster/PSSysadminToolkit/blob/Dev/Public/Measure-ChildItem.ps1
-        MIT license. http://www.opensource.org/licenses/MIT
+    Author: Chris Dent (indented-automation) https://github.com/indented-automation
+    Source: https://github.com/steviecoaster/PSSysadminToolkit/blob/Dev/Public/Measure-ChildItem.ps1
+    MIT license. http://www.opensource.org/licenses/MIT
     #>
 
     [CmdletBinding()]
@@ -1090,8 +1090,6 @@ If ($HtmlReport.IsPresent -eq $true) {
     }
 }
 
-[System.Collections.ArrayList]$AllContentObjects = @()
-
 # Build the $Commands array ready for Get-CMContent
 switch ($true) {
     ($Packages.IsPresent -eq $true) {
@@ -1167,30 +1165,34 @@ $AllFolders | ForEach-Object -Begin {
     $RSPool = [RunspaceFactory]::CreateRunspacePool(1, $Threads, $InitialSessionState, $Host)
     $RSPool.ApartmentState = "MTA"
     $RSPool.Open()
-    $RSResults = @()
+    [System.Collections.Generic.List[Object]]$RSResults = @()
     $RSScriptBlock = {
         Param (
             [string]$RSFolder,
-            [System.Collections.ArrayList]$RSAllContentObjects
+            [System.Collections.Generic.List[Object]]$RSAllContentObjects
         )
 
         # Initialise the essentials
-        $obj = New-Object PSCustomObject
-        Add-Member -InputObject $obj -MemberType NoteProperty -Name Folder -Value $RSFolder
-        [System.Collections.ArrayList]$UsedBy = @()
+        [System.Collections.Generic.List[String]]$UsedBy = @()
         $IntermediatePath = $false
         $NotUsed = $false
 
-        If ((Test-FileSystemAccess -Path $RSFolder -Rights Read) -eq 5) {
-            $UsedBy.Add("Access denied") | Out-Null
-            # Still continue anyway because we can still determine if it's an exact match or intermediate path of a content object
+        switch ([int](Test-FileSystemAccess -Path $RSFolder -Rights Read)) {
+            5 {
+                $UsedBy.Add("Access denied")
+            }
+            740 {
+                $UsedBy.Add("Access denied (elevation required)")
+            }
         }
+
+        # Still continue anyway, despite access denied, because we can still determine if it's an exact match or intermediate path of a content object
 
         # Filtered to exclude SourcePathFlag 3 so we can exclude false positives
         # e.g. if content objects uses \\server\share\folder1\folder2 and $SourcesLocation is \\server\share\folder1
         # but SourcePathFlag is 3, this could report \\server\share\folder1 as intermediate where it may not be
         # Plus, no point iterating over them if we already know that the SourcePath isn't resolvable
-        ForEach ($ContentObject in ($RSAllContentObjects | Where-Object {$_.SourcePathFlag -ne 3})) {
+        ForEach ($ContentObject in ($RSAllContentObjects.Where( {$_.SourcePathFlag -ne 3} ))) {
 
             switch($true) {
                 ([string]::IsNullOrEmpty($ContentObject.SourcePath) -eq $true) {
@@ -1199,13 +1201,13 @@ $AllFolders | ForEach-Object -Begin {
                 }
                 ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.$RSFolder -eq $env:COMPUTERNAME)) {
                     # Content object source path is on local file system to the site server
-                    $UsedBy.Add($ContentObject.Name) | Out-Null
+                    $UsedBy.Add($ContentObject.Name)
                     break
                 }
                 (($ContentObject.AllPaths.Keys -contains $RSFolder) -eq $true) {
                     # By default the ContainsKey method ignores case
                     # A match has been found within the AllPaths property of the content object
-                    $UsedBy.Add($ContentObject.Name) | Out-Null
+                    $UsedBy.Add($ContentObject.Name)
                     break
                 }
                 (($ContentObject.AllPaths.Keys -match [Regex]::Escape($RSFolder)).Count -gt 0) {
@@ -1226,51 +1228,74 @@ $AllFolders | ForEach-Object -Begin {
 
         }
 
-        # Add to PSObject
         switch ($true) {
             ($UsedBy.count -gt 0) {
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value (($UsedBy) -join ', ')
+                $UsedBy = $UsedBy -join ", "
                 break
             }
             ($IntermediatePath -eq $true) {
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "An intermediate folder (sub or parent folder)"
+                $UsedBy = "An intermediate folder (sub or parent folder)"
                 break
             }
             ($NotUsed -eq $true) {
-                Add-Member -InputObject $obj -MemberType NoteProperty -Name UsedBy -Value "Not used"
+                $UsedBy = "Not used"
                 break
             }
         }
-        return $obj
+
+        [PSCustomObject]@{
+            Folder  = $RSFolder
+            UsedBy  = $UsedBy -join ", "
+        }
+
     }
 
+    If ($NoProgress.IsPresent -eq $false) {
+        If ($AllFolders.count -gt 150) {
+            [Int32]$FolderInterval = $AllFolders.count * 0.01
+        }
+        Else {
+            $FolderInterval = 2
+        }
+    }
+
+    Write-CMLogEntry -Value "Adding jobs to queue" -Severity 1 -Component "Processing" -WriteHost
 
 } -Process {
 
     $Folder = $_
+
+    If ($NoProgress.IsPresent -eq $false) {
+        If (($AllFolders.IndexOf($Folder) % $FolderInterval) -eq 0) {
+            [Int32]$Percentage = ($AllFolders.IndexOf($Folder) / $AllFolders.count * 100)
+            Write-Progress -Id 2 -Activity "Adding jobs to queue" -PercentComplete $Percentage -Status ("{0}% complete" -f $Percentage) -ParentId 1
+        }
+    }
 
     $Runspace = [PowerShell]::Create()
     $null = $Runspace.AddScript($RSScriptBlock)
     $null = $Runspace.AddArgument($Folder)
     $null = $Runspace.AddArgument($AllContentObjects)
     $Runspace.Runspacepool = $RSPool
-    $RSResults += [PSCustomObject]@{ Pipe = $Runspace; Status = $Runspace.BeginInvoke() }
+    $RSResults.Add( [PSCustomObject]@{ Pipe = $Runspace; Status = $Runspace.BeginInvoke() } )
     
 } -End {
     
-    [System.Collections.ArrayList]$Result = @()
+    Write-CMLogEntry -Value "Waiting for jobs to complete" -Severity 1 -Component "Processing" -WriteHost
+
+    [System.Collections.Generic.List[Object]]$Result = @()
 
     # Process runspaces, wait for their results and clean up when complete
     $TotalRunspaces = $RSResults | Measure-Object | Select-Object -ExpandProperty Count
     while ($RSResults.Status -ne $null) {
         If ($NoProgress.IsPresent -eq $false) { 
-            $TotalNotComplete = $RSResults | Where-Object { $_.Status -eq $null } | Measure-Object | Select-Object -ExpandProperty Count
+            $TotalNotComplete = $RSResults.Where( { $_.Status -eq $null } ) | Measure-Object | Select-Object -ExpandProperty Count
             Write-Progress -Id 2 -Activity "Evaluating folders" -Status ("{0} folders remaining" -f ($TotalRunspaces-$TotalNotComplete)) -PercentComplete ($TotalNotComplete/$TotalRunspaces * 100) -ParentId 1
         }
-        $Completed = $RSResults | Where-Object { $_.Status.IsCompleted -eq $true }
+        $Completed = $RSResults.Where( { $_.Status.IsCompleted -eq $true } )
         ForEach ($item in $Completed) {
             # Reference index 0 so we can grab the PSCustomobject inside the PSDataCollection object
-            $Result.Add(($item.Pipe.EndInvoke($item.Status)[0])) | Out-Null
+            $Result.Add(($item.Pipe.EndInvoke($item.Status)[0]))
             $item.Pipe.Dispose()
             $item.Status = $null
         }
@@ -1280,27 +1305,34 @@ $AllFolders | ForEach-Object -Begin {
     # Clean up runspace pool
     $RSPool.Dispose()
 
+    Write-CMLogEntry -Value "Done determining unused folders" -Severity 1 -Component "Processing" -WriteHost
+
     # Update Write-Progress
     If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Evaluating folders" -Completed -ParentId 1 }
     If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 100 -Status "Finishing up" }
 
-    Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit"
+    Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
     If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
 
     # Calculate total MB used for each "Not used" folder
     # This is wasteful if -HtmlReport is not specified, but I really wanted $SummaryNotUsedFolders total in end result stats
-    $NotUsedFolders = $Result | Where-Object { $_.UsedBy -eq "Not used" } | Select-Object -ExpandProperty Folder | Measure-ChildItem -Unit MB -Digits 2
+    $NotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
 
     # Calculate total MB used on size unused by ConfigMgr
-    [System.Collections.ArrayList]$dropped = @()                   
-    $SummaryNotUsedFolders = $NotUsedFolders | Where-Object { $_ -notin $dropped } | ForEach-Object {
+    $SummaryNotUsedFolders = $NotUsedFolders | Sort-Object Folder | ForEach-Object {
         $current = $_
-        $others = $NotUsedFolders | Where-Object { $_.Path -ne $current.Path -And $_.Path.StartsWith($current.Path) }
-        $dropped.Add($others) | Out-Null
-        $current
+        If (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
+            # Do nothing
+        }
+        Else {
+            $previous = $current
+            $current.Folder | Measure-ChildItem -Unit MB -Digits 2
+        }
     }
 
-    $SummaryNotUsedFoldersMB = $SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum
+    Write-CMLogEntry -Value "Done calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
+
+    $SummaryNotUsedFoldersMB = [Math]::Round(($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum), 2)
     $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
     $SummaryNotUsedFoldersDirectoryCount = $SummaryNotUsedFolders | Measure-Object DirectoryCount -Sum | Select-Object -ExpandProperty Sum
 
@@ -1328,6 +1360,7 @@ $AllFolders | ForEach-Object -Begin {
             Write-CMLogEntry -Value "Exporting PowerShell return object" -Severity 1 -Component "Exit" -WriteHost
             If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell return object" -PercentComplete 50 -ParentId 1 }
             Export-Clixml -LiteralPath (($PSCommandPath | Split-Path -Parent) + "\" + ($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + "_result.xml") -InputObject $Result
+            Write-CMLogEntry -Value "Done exporting PowerShell return object" -Severity 1 -Component "Exit" -WriteHost
         }
         catch {
             Write-CMLogEntry -Value ("Failed to export PowerShell object: {0}" -f $error[0].Exception.Message) -Severity 3 -Component "Exit" -WriteHost
@@ -1340,6 +1373,7 @@ $AllFolders | ForEach-Object -Begin {
             Write-CMLogEntry -Value "Exporting PowerShell ConfigMgr content objects object" -Severity 1 -Component "Exit" -WriteHost
             If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell ConfigMgr content objects object" -PercentComplete 75 -ParentId 1 }
             Export-Clixml -LiteralPath (($PSCommandPath | Split-Path -Parent) + "\" + ($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + "_cmobjects.xml") -InputObject $AllContentObjects
+            Write-CMLogEntry -Value "Done exporting PowerShell ConfigMgr content objects object" -Severity 1 -Component "Exit" -WriteHost
         }
         catch {
             Write-CMLogEntry -Value ("Failed to export PowerShell object: {0}" -f $error[0].Exception.Message) -Severity 3 -Component "Exit" -WriteHost
@@ -1386,7 +1420,7 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($NotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount) -PreContent {
+                            New-HTMLTable -DataTable $NotUsedFolders -PreContent {
                                 "<span style='font-size: 1.2em; margin-left: 1em;'>All folders that were determined not used under the given path by the searched content objects.</span>"
                             }
                         }
@@ -1396,7 +1430,7 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($AllContentObjects | Where-Object { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths) -PreContent {
+                            New-HTMLTable -DataTable ($AllContentObjects.Where( { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths) -PreContent {
                                 "<span style='font-size: 1.2em; margin-left: 1em;'>All content objects that have a source path which are not accessible from the computer that ran this script (`"{0}`").</span>" -f $env:COMPUTERNAME
                             }
                         }
@@ -1413,6 +1447,8 @@ $AllFolders | ForEach-Object -Begin {
                     }
                 }
             }
+            If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating HTML report" -Completed -ParentId 1 }
+            Write-CMLogEntry -Value "Done creating HTML report" -Severity 1 -Component "Exit" -WriteHost
         }
         catch {
             Write-CMLogEntry -Value ("Failed to create HTML report: {0}" -f $error[0]) -Severity 3 -Component "Exit" -WriteHost
@@ -1422,12 +1458,10 @@ $AllFolders | ForEach-Object -Begin {
     # Stop clock for runtime
     $StopTime = (Get-Date) - $StartTime
 
-    If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating HTML report" -Completed -ParentId 1 }
-
     # Write summary to log
     Write-CMLogEntry -Value ("Content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders at {0}: {1}" -f $SourcesLocation, $AllFolders.count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders where access denied: {0}" -f ($Result | Where-Object { $_.UsedBy -like "Access denied*" } | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Folders where access denied: {0}" -f ($Result.Where( { $_.UsedBy -like "Access denied*" } ) | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders unused: {0}" -f ($NotUsedFolders | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): {2} MB" -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", "), $SummaryNotUsedFoldersMB) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Runtime: {0}" -f $StopTime.ToString()) -Severity 1 -Component "Exit" -WriteHost
