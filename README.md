@@ -70,7 +70,7 @@ Folder                                    UsedBy
 
 ## Getting started
 
-1. Download Get-CMUnusedSources.ps1
+1. Download `Get-CMUnusedSources.ps1`s
 2. Check out the examples below and read through the parameters available. If you're eager, then calling the script as is and only providing values for the mandatory parameters will get you going under the default conditions (_see below_).
 
 ## Default conditions
@@ -91,10 +91,10 @@ Running the script without anything other than the mandatory parameters will do 
 ## What can it do
 
 - You can execute this script remotely from a site server. It makes zero changes to your ConfigMgr site. It's purely for reporting.
-- The result is returned as an array of PSObjects.
+- The returned object by the script is an array of PSObjects.
 - `-SourcesLocation` can be a UNC or local path and works around the 260 MAX_PATH limit.
 - `-Threads` to control how many threads are used for concurrent processing.
-- Optionally exports PowerShell objects to file of either all your ConfigMgr content objects and/or the final report. You can later reimport these using `Import-Clixml`.
+- Optionally exports PowerShell objects to file of either all your ConfigMgr content objects or the result. You can later reimport these using `Import-Clixml`.
 - Optionally create a HTML report where you can then export to CSV/PDF/XSLX.
 - Optionally filter the ConfigMgr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Optionally create a log file.
@@ -128,15 +128,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -S
 - Gathers only Packages, Applications, Operating System images and Operating System upgrade images content objects.
 - Produces a HTML report saved in the same directory as the script. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
 - Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` because that's the default value of `-Threads`.
-- Returns the result PowerShell object to variable `$result`.
-
----
-
-```powershell
-PS C:\>
-```
-
-Another example here
+- Returns the result PowerShell object to variable `$result`
 
 ## Runtime stats
 
@@ -152,7 +144,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -
 
 ## Process overview
 
-The process begins by gathering all (or selective) ConfigMgr content objects within a hierarchy by site code using the ConfigMgr cmdlets. It also recursively gathers all folders under `-SourcesLocation`.
+The process begins by gathering all (or selective) ConfigMgr content objects within a hierarchy, filtered by site code, using the ConfigMgr cmdlets. It also recursively gathers all folders under `-SourcesLocation`.
 
 > **Note:** It's OK if you see "Access denied" exceptions printed to console, the script will handle these and report accordingly.
 

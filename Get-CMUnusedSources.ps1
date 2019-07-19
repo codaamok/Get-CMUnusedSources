@@ -62,16 +62,19 @@ Set the number of threads you wish to use for concurrent processing of this scri
 
 .INPUTS
 
-.EXAMPLE
+.OUTPUTS
 
+.EXAMPLE
 C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation \\sccm\Applications$ -SiteCode ACC -SiteServer SCCM -Applications -Log -LogFileSize 10MB -NumOfRotatedLogs 5 -ExportReturnObject -HtmlReport -Threads 2
 
 .EXAMPLE
-
 C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation F:\ -SiteCode ACC -SiteServer SCCM -Log -HtmlReport
 
 .NOTES
-
+Author:     Adam Cook (@codaamok)
+Updated:    19/07/2019
+License:    GLP-3.0
+Source:     https://github.com/codaamok/Get-CMUnusedSources  
 #>
 #Requires -Version 5.1
 Param (
@@ -137,11 +140,8 @@ TODO:
         - publish to technet/github/psgallery
         - delete log entries for $result??
         - if given F:\ or \\server\f$ currently Get-AllPaths does not determine shared folders that match the path used
-        - improve log entry if $LocalPath is null cuz it couldn't query win32_share, make it suggest it wasn't polled again
         - improve write-progress for -Process of main execution
         - test -altfoldersearch with use of where() and not where-object
-        - take chris dent's remarks onboard
-        - get rid of all arraylists
 #>
 
 <#
@@ -601,7 +601,7 @@ Function Get-AllPaths {
             }  
         }
         Else {
-            Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`", either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatherContentObjects"
+            Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`" from cache, either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatherContentObjects"
         }
         # Add the original path again but with the alternate server (FQDN / NetBIOS / IP)
         $AllPathsArr.Add("\\$($AltServer)\$($ShareName)$($ShareRemainder)")
@@ -850,11 +850,11 @@ Function Test-FileSystemAccess {
 Function Measure-ChildItem {
     <#
     .SYNOPSIS
-        Recursively measures the size of a directory.
+    Recursively measures the size of a directory.
     .NOTES
-        Author: Chris Dent (indented-automation) https://github.com/indented-automation
-        Source: https://github.com/steviecoaster/PSSysadminToolkit/blob/Dev/Public/Measure-ChildItem.ps1
-        MIT license. http://www.opensource.org/licenses/MIT
+    Author: Chris Dent (indented-automation) https://github.com/indented-automation
+    Source: https://github.com/steviecoaster/PSSysadminToolkit/blob/Dev/Public/Measure-ChildItem.ps1
+    MIT license. http://www.opensource.org/licenses/MIT
     #>
 
     [CmdletBinding()]
@@ -1326,7 +1326,7 @@ $AllFolders | ForEach-Object -Begin {
 
     Write-CMLogEntry -Value "Done calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
 
-    $SummaryNotUsedFoldersMB = $SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum
+    $SummaryNotUsedFoldersMB = [Math]::Round(($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum), 2)
     $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
     $SummaryNotUsedFoldersDirectoryCount = $SummaryNotUsedFolders | Measure-Object DirectoryCount -Sum | Select-Object -ExpandProperty Sum
 
