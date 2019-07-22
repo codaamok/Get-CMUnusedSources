@@ -1331,22 +1331,32 @@ $AllFolders | ForEach-Object -Begin {
     $NotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
 
     # Calculate total MB used on size unused by ConfigMgr
-    $SummaryNotUsedFolders = $NotUsedFolders | Sort-Object Folder | ForEach-Object {
-        $current = $_
-        If (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
-            # Do nothing
+    If ([string]::IsNullOrEmpty($NotUsedFolders) -eq $true) {
+        # PSCustomObject created so that when $NotUsedFolders is blank, PSWriteHtml won't print warnings because of missing properties when trying to create merge headers
+        $SummaryNotUsedFolders = [PSCustomObject]@{
+            Path            = 0
+            Size            = 0
+            FileCount       = 0
+            DirectoryCount  = 0
         }
-        Else {
-            $previous = $current
-            $current.Folder | Measure-ChildItem -Unit MB -Digits 2
-        }
+        $SummaryNotUsedFoldersMB,$SummaryNotUsedFoldersFileCount,$SummaryNotUsedFoldersDirectoryCount = 0,0,0
     }
-
-    Write-CMLogEntry -Value "Done calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
-
-    $SummaryNotUsedFoldersMB = [Math]::Round(($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum), 2)
-    $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
-    $SummaryNotUsedFoldersDirectoryCount = $SummaryNotUsedFolders | Measure-Object DirectoryCount -Sum | Select-Object -ExpandProperty Sum
+    Else {
+        $SummaryNotUsedFolders = $NotUsedFolders | Sort-Object Folder | ForEach-Object {
+            $current = $_
+            If (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
+                # Do nothing
+            }
+            Else {
+                $previous = $current
+                $current.Folder | Measure-ChildItem -Unit MB -Digits 2
+            }
+        }
+        Write-CMLogEntry -Value "Done calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
+        $SummaryNotUsedFoldersMB = [Math]::Round(($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum), 2)
+        $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
+        $SummaryNotUsedFoldersDirectoryCount = $SummaryNotUsedFolders | Measure-Object DirectoryCount -Sum | Select-Object -ExpandProperty Sum
+    }
 
     # Write $Result to log file
     # I know Write-CMLogEntry has Enabled parameter but having it here too just makes sense - to save the gazillion of loops for something that may be disabled anyway
