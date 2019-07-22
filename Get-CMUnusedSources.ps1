@@ -713,8 +713,13 @@ Function Get-AllFolders {
         }
     }
 
-    $Folders.Add($Path)
-    
+    If ([string]::IsNullOrEmpty($Folders) -eq $true) {
+        [System.Collections.Generic.List[String]]$Folders = @($Path)
+    }
+    Else {
+        $Folders.Add($Path)
+    }
+
     # Undo the \\?\ prefix
     switch ($true) {
         ($Path -match "^\\\\\?\\UNC\\") {
