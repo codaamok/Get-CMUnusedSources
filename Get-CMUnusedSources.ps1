@@ -713,8 +713,13 @@ Function Get-AllFolders {
         }
     }
 
-    $Folders.Add($Path)
-    
+    If ([string]::IsNullOrEmpty($Folders) -eq $true) {
+        [System.Collections.Generic.List[String]]$Folders = @($Path)
+    }
+    Else {
+        $Folders.Add($Path)
+    }
+
     # Undo the \\?\ prefix
     switch ($true) {
         ($Path -match "^\\\\\?\\UNC\\") {
@@ -847,7 +852,7 @@ Function Test-FileSystemAccess {
     }
 }
 
-Function Measure-ChildItem {
+function Measure-ChildItem {
     <#
     .SYNOPSIS
     Recursively measures the size of a directory.
@@ -935,6 +940,19 @@ Function Measure-ChildItem {
 
                     public class FileSearcher
                     {
+                        private static uint convertToUInt(int value)
+                        {
+                            return BitConverter.ToUInt32(
+                                BitConverter.GetBytes(value),
+                                0
+                            );
+                        }
+
+                        private static long convertToLong(int value)
+                        {
+                            return (long)(convertToUInt(value) << 32);
+                        }
+
                         public static long[] MeasureItem(string path, bool recurse, long[] itemData)
                         {
                             if (itemData == null)
@@ -970,7 +988,7 @@ Function Measure-ChildItem {
                                 }
                                 else
                                 {
-                                    itemData[0] += ((long)findData.nFileSizeHigh * UInt32.MaxValue) + (long)findData.nFileSizeLow;
+                                    itemData[0] += convertToLong(findData.nFileSizeHigh) + (long)convertToUInt(findData.nFileSizeLow);
                                     itemData[1]++;
                                 }
                             } while (UnsafeNativeMethods.FindNextFile(findHandle, out findData));
@@ -1079,13 +1097,13 @@ If ($HtmlReport.IsPresent -eq $true) {
     }
     catch {
         $Message = "Unable to import PSWriteHtml module: {0}" -f $error[0].Exception.Message
-        Write-CMLogEntry -Value $Message -Severity 3 -Component "Initilsation" -WriteHost
+        Write-CMLogEntry -Value $Message -Severity 3 -Component "Initialisation"
         throw $Message
     }
-    [version]$moduleVersion = Get-Module PSWriteHTML | Select-Object -ExpandProperty Version
-    If($moduleVersion -lt [version]"0.0.44.0") {
+    [version]$moduleVersion = (Get-Module PSWriteHTML | Sort-Object Version -Descending | Select-Object -ExpandProperty Version)[0]
+    If($moduleVersion -lt [version]"0.0.44") {
         $Message = "PSWriteHtml version is too old ({0}).  Requires 0.0.44+." -f $moduleVersion.ToString()
-        Write-CMLogEntry -Value $Message -Severity 3 -Component "Initilsation" -WriteHost
+        Write-CMLogEntry -Value $Message -Severity 3 -Component "Initialisation"
         throw $Message
     }
 }
@@ -1319,28 +1337,40 @@ $AllFolders | ForEach-Object -Begin {
     $NotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
 
     # Calculate total MB used on size unused by ConfigMgr
-    $SummaryNotUsedFolders = $NotUsedFolders | Sort-Object Folder | ForEach-Object {
-        $current = $_
-        If (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
-            # Do nothing
+    If ($NotUsedFolders.count -eq 0) {
+        # PSCustomObject created so that when $NotUsedFolders is blank, PSWriteHtml won't print warnings because of missing properties when trying to create merge headers
+        $SummaryNotUsedFolders = [PSCustomObject]@{
+            Path            = 0
+            Size            = 0
+            FileCount       = 0
+            DirectoryCount  = 0
         }
-        Else {
-            $previous = $current
-            $current.Folder | Measure-ChildItem -Unit MB -Digits 2
-        }
+        $SummaryNotUsedFoldersMB,$SummaryNotUsedFoldersFileCount,$SummaryNotUsedFoldersDirectoryCount = 0,0,0
     }
-
-    Write-CMLogEntry -Value "Done calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
-
-    $SummaryNotUsedFoldersMB = [Math]::Round(($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum), 2)
-    $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
-    $SummaryNotUsedFoldersDirectoryCount = $SummaryNotUsedFolders | Measure-Object DirectoryCount -Sum | Select-Object -ExpandProperty Sum
+    Else {
+        $SummaryNotUsedFolders = $NotUsedFolders | Sort-Object Folder | ForEach-Object {
+            $current = $_
+            If (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
+                # Do nothing
+            }
+            Else {
+                $previous = $current
+                $current.Folder | Measure-ChildItem -Unit MB -Digits 2
+            }
+        }
+        Write-CMLogEntry -Value "Done calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
+        $SummaryNotUsedFoldersMB = [Math]::Round(($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum), 2)
+        $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
+        $SummaryNotUsedFoldersDirectoryCount = $SummaryNotUsedFolders | Measure-Object DirectoryCount -Sum | Select-Object -ExpandProperty Sum
+    }
 
     # Write $Result to log file
     # I know Write-CMLogEntry has Enabled parameter but having it here too just makes sense - to save the gazillion of loops for something that may be disabled anyway
     # May consider deleting this section, enough about the result is written to file
     If ($Log.IsPresent -eq $true) {
-        If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Writing result to log file" -PercentComplete 25 -ParentId 1 }
+        $Message = "Writing result to log file"
+        If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 25 -ParentId 1 }
+        Write-CMLogEntry -Value $Message -Severity 1 -Component "Processing" -WriteHost
         ForEach ($item in $Result) {
             switch -regex ($item.UsedBy) {
                 "Access denied" {
@@ -1405,9 +1435,9 @@ $AllFolders | ForEach-Object -Begin {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
                             New-HTMLTable -DataTable ($SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount) {
-                                New-HTMLTableHeader -Names "Size (MB)" -Title ("{0}MB" -f $SummaryNotUsedFoldersMB) -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen
-                                New-HTMLTableHeader -Names "FileCount" -Title $SummaryNotUsedFoldersFileCount -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen
-                                New-HTMLTableHeader -Names "DirectoryCount" -Title $SummaryNotUsedFoldersDirectoryCount -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen
+                                New-HTMLTableHeader -Names "Size (MB)" -Title ("{0}MB" -f $SummaryNotUsedFoldersMB) -Color White -FontWeight Bold -Alignment left -BackGroundColor LimeGreen
+                                New-HTMLTableHeader -Names "FileCount" -Title $SummaryNotUsedFoldersFileCount -Color White -FontWeight Bold -Alignment left -BackGroundColor LimeGreen
+                                New-HTMLTableHeader -Names "DirectoryCount" -Title $SummaryNotUsedFoldersDirectoryCount -Color White -FontWeight Bold -Alignment left -BackGroundColor LimeGreen
                                 New-HTMLTableHeader -Names "Path" -Title " " -ColumnCount 1 -AddRow
                                 New-HTMLTableHeader -Names "Size (MB)", "FileCount", "DirectoryCount" -Title "Totals" -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen -AddRow -ColumnCount 3
                             } -PreContent {
