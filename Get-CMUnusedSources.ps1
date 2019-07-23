@@ -1362,7 +1362,9 @@ $AllFolders | ForEach-Object -Begin {
     # I know Write-CMLogEntry has Enabled parameter but having it here too just makes sense - to save the gazillion of loops for something that may be disabled anyway
     # May consider deleting this section, enough about the result is written to file
     If ($Log.IsPresent -eq $true) {
-        If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Writing result to log file" -PercentComplete 25 -ParentId 1 }
+        $Message = "Writing result to log file"
+        If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 25 -ParentId 1 }
+        Write-CMLogEntry -Value $Message -Severity 1 -Component "Processing" -WriteHost
         ForEach ($item in $Result) {
             switch -regex ($item.UsedBy) {
                 "Access denied" {
