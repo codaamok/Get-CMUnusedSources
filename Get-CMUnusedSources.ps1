@@ -1427,9 +1427,9 @@ $AllFolders | ForEach-Object -Begin {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
                             New-HTMLTable -DataTable ($SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount) {
-                                New-HTMLTableHeader -Names "Size (MB)" -Title ("{0}MB" -f $SummaryNotUsedFoldersMB) -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen
-                                New-HTMLTableHeader -Names "FileCount" -Title $SummaryNotUsedFoldersFileCount -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen
-                                New-HTMLTableHeader -Names "DirectoryCount" -Title $SummaryNotUsedFoldersDirectoryCount -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen
+                                New-HTMLTableHeader -Names "Size (MB)" -Title ("{0}MB" -f $SummaryNotUsedFoldersMB) -Color White -FontWeight Bold -Alignment left -BackGroundColor LimeGreen
+                                New-HTMLTableHeader -Names "FileCount" -Title $SummaryNotUsedFoldersFileCount -Color White -FontWeight Bold -Alignment left -BackGroundColor LimeGreen
+                                New-HTMLTableHeader -Names "DirectoryCount" -Title $SummaryNotUsedFoldersDirectoryCount -Color White -FontWeight Bold -Alignment left -BackGroundColor LimeGreen
                                 New-HTMLTableHeader -Names "Path" -Title " " -ColumnCount 1 -AddRow
                                 New-HTMLTableHeader -Names "Size (MB)", "FileCount", "DirectoryCount" -Title "Totals" -Color White -FontWeight Bold -Alignment center -BackGroundColor LimeGreen -AddRow -ColumnCount 3
                             } -PreContent {
