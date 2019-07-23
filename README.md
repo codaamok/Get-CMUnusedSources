@@ -255,11 +255,12 @@ That should offer you more confidence because it is the same as running the Conf
 - `SourcePathFlag`
 - `AllPaths`
 
-The `SourcePathFlag` property can have three values:
+The `SourcePathFlag` property is an enum which can have the following fours values:
 
-- `0` = `ERROR_SUCCESS`
-- `5` = `ERROR_ACCESS_DENIED`
-- `3` = `ERROR_PATH_NOT_FOUND`
+- `0` = `[FileSystemAccessState]::ERROR_SUCCESS`
+- `3` = `[FileSystemAccessState]::ERROR_PATH_NOT_FOUND`
+- `5` = `[FileSystemAccessState]::ERROR_ACCESS_DENIED`
+- `740` = `[FileSystemAccessState]::ERROR_ELEVATION_REQUIRED`
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode XYZ -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
