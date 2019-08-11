@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION 1.0
+.VERSION 1.0.1
 .GUID 62980d1d-d263-4c01-b49c-e64502363127
 .AUTHOR Adam Cook (Twitter: @codaamok - website: cookadam.co.uk)
 .COMPANYNAME 
@@ -8,7 +8,7 @@
 .LICENSEURI https://github.com/codaamok/Get-CMUnusedSources/blob/master/LICENSE
 .PROJECTURI https://github.com/codaamok/Get-CMUnusedSources
 .ICONURI 
-.EXTERNALMODULEDEPENDENCIES 
+.EXTERNALMODULEDEPENDENCIES PSWriteHtml
 .REQUIREDSCRIPTS 
 .EXTERNALSCRIPTDEPENDENCIES 
 .RELEASENOTES
