@@ -8,11 +8,11 @@ Check out https://www.cookadam.co.uk/get-cmunusedsources and https://github.com/
 .PARAMETER SourcesLocation
 The path to the directory you store your ConfigMgr sources. Can be a UNC or local path. Must be a valid path that you have read access to.
 
-.PARAMETER SiteCode
-The site code of the ConfigMgr site you wish to query for content objects.
-
 .PARAMETER SiteServer
 The site server of the given ConfigMgr site code. The server must be reachable over a network.
+
+.PARAMETER SiteCode
+The site code of the ConfigMgr site you wish to query for content objects.
 
 .PARAMETER Packages
 Specify this switch to include Packages within the search to determine unused content on disk.
@@ -65,10 +65,10 @@ Set the number of threads you wish to use for concurrent processing of this scri
 .OUTPUTS
 
 .EXAMPLE
-C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation \\sccm\Applications$ -SiteCode ACC -SiteServer SCCM -Applications -Log -LogFileSize 10MB -NumOfRotatedLogs 5 -ExportReturnObject -HtmlReport -Threads 2
+C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation \\sccm\Applications$ -SiteServer SCCM -Applications -Log -LogFileSize 10MB -NumOfRotatedLogs 5 -ExportReturnObject -HtmlReport -Threads 2
 
 .EXAMPLE
-C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation F:\ -SiteCode ACC -SiteServer SCCM -Log -HtmlReport
+C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation F:\ -SiteServer SCCM -Log -HtmlReport
 
 .NOTES
 Author:     Adam Cook (@codaamok)
@@ -89,10 +89,7 @@ Param (
         }
     })]
     [string]$SourcesLocation,
-    [Parameter(Mandatory=$true, Position = 1, HelpMessage="ConfigMgr site code you are querying.")]
-    [ValidatePattern('^[a-zA-Z0-9]{3}$')]
-    [string]$SiteCode,
-    [Parameter(Mandatory=$true, Position = 2, HelpMessage="ConfigMgr site server of the site site code.")]
+    [Parameter(Mandatory=$true, Position = 1, HelpMessage="ConfigMgr site server of the site site code.")]
     [ValidateScript({
         If(!(Test-Connection -ComputerName $_ -Count 1 -ErrorAction SilentlyContinue)) {
             throw "Host `"$($_)`" is unreachable"
@@ -101,6 +98,9 @@ Param (
         }
     })]
     [string]$SiteServer,
+    [Parameter(Mandatory=$false, Position = 2, HelpMessage="ConfigMgr site code you are querying.")]
+    [ValidatePattern('^[a-zA-Z0-9]{3}$')]
+    [string]$SiteCode,
     [Parameter(Mandatory=$false, HelpMessage="Gather packages.")]
     [switch]$Packages,
     [Parameter(Mandatory=$false, HelpMessage="Gather applications.")]
@@ -1083,10 +1083,20 @@ ForEach($item in $PSBoundParameters.GetEnumerator()) {
     Write-CMLogEntry -Value ("- {0}: {1}" -f $item.Key, $item.Value) -Severity 1 -Component "Initilisation"
 }
 
+# Try and detemrine site code from $SiteServer
+try {
+    $SiteCode = Get-CimInstance -ComputerName $SiteServer -ClassName SMS_ProviderLocation -Namespace "ROOT\SMS" -ErrorAction Stop | Select-Object -ExpandProperty SiteCode
+}
+catch {
+    $Message = "Could not determine site code, please provide it using the -SiteCote parameter, quiting"
+    Write-CMLogEntry -Value $MEssage -Severity 2 -Component "Initilisation"
+    throw $Message
+}
+
 # If user has given local path for $SourcesLocation, need to ensure we don't produce false positives where a similar folder structure exists on the remote machine and site server. e.g. packages let you specify local path on site server
 If ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SiteServer)) {
     $Message = "Won't be able to determine unused folders with given local path while running remotely from site server, quitting"
-    Write-CMLogEntry -Value $Message -Severity 2 -Component "Initilisation" -WriteHost
+    Write-CMLogEntry -Value $Message -Severity 2 -Component "Initilisation"
     throw $Message
 }
 

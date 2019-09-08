@@ -76,12 +76,12 @@ Folder                                    UsedBy
 ## Default conditions
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com"
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteServer "server.contoso.com"
 ```
 
 Running the script without anything other than the mandatory parameters will do the following:
 
-- Gather all content objects
+- Gather all content objects under the site code of site server given in -SiteServer
 - Show overall progress using Write-Progress
 - No logging
 - No PowerShell object export
@@ -103,7 +103,7 @@ Running the script without anything other than the mandatory parameters will do 
 ## Examples
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -ExportReturnObject -HtmlReport -Threads 2
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteServer "server.contoso.com" -Log -ExportReturnObject -HtmlReport -Threads 2
 ```
 
 - Gather all content objects relevant to site code `XYZ`.
@@ -116,7 +116,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -
 ---
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Log -NoProgress -ExportReturnObject -ExportCMContentObjects -Packages -Applications -OSImages -OSUpgradeImages -HtmlReport
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -SiteServer "server.contoso.com" -Log -NoProgress -ExportReturnObject -ExportCMContentObjects -Packages -Applications -OSImages -OSUpgradeImages -HtmlReport
 ```
 
 - Gather all content objects relevant to site code `XYZ`.
@@ -135,7 +135,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -S
 The below stats are an average of 3 runs using the following options:
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteCode "XYZ" -SiteServer "server.contoso.com"
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteServer "server.contoso.com"
 ```
 
 **Folders:** 2633 - **Content objects:** 132 - **CPUs:** 2 - **RAM:** 8GB - **Runtime:** 4 minutes 20 seconds
@@ -181,7 +181,7 @@ The `UsedBy` property can have one or more of the following values:
 ### Example output
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode "XYZ" -SiteServer "server.contoso.com" -Applications
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications
 Starting
 Gathering folders: \\fileserver\Applications$
 Number of folders: 40
@@ -218,7 +218,7 @@ You could verify if a folder structure is used or not by checking out the result
 You can easily achieve this verification with PowerShell:
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode XYZ -SiteServer "server.contoso.com" -Applications
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications
 Starting
 Gathering folders: \\fileserver\Applications$
 Number of folders: 40
@@ -262,7 +262,7 @@ The `SourcePathFlag` property can have three values:
 - `3` = `ERROR_PATH_NOT_FOUND`
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteCode XYZ -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
 PS C:\> $cmcontentobjs = Import-Clixml -Path ".\Get-CMUnusedSources.ps1_2019-07-07_16-48-52_cmobjects.xml"
 PS C:\> $cmcontentobjs | Select -First 2
 
@@ -485,13 +485,13 @@ The script will attempt to continue and close normally.
 
 The path to the directory you store your ConfigMgr sources. Can be a UNC or local path. Must be a valid path that you have read access to.
 
-### -SiteCode (mandatory)
-
-The site code of the ConfigMgr site you wish to query for content objects.
-
 ### -SiteServer (mandatory)
 
 The site server of the given ConfigMgr site code. The server must be reachable over a network.
+
+### -SiteCode
+
+The site code of the ConfigMgr site you wish to query for content objects.
 
 ### -Packages
 
