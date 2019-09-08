@@ -1,3 +1,19 @@
+<#PSScriptInfo
+.VERSION 1.0.3
+.GUID 62980d1d-d263-4c01-b49c-e64502363127
+.AUTHOR Adam Cook (Twitter: @codaamok - website: cookadam.co.uk)
+.COMPANYNAME 
+.COPYRIGHT 
+.TAGS SCCM ConfigMgr ConfigurationManager
+.LICENSEURI https://github.com/codaamok/Get-CMUnusedSources/blob/master/LICENSE
+.PROJECTURI https://github.com/codaamok/Get-CMUnusedSources
+.ICONURI 
+.EXTERNALMODULEDEPENDENCIES PSWriteHtml
+.REQUIREDSCRIPTS 
+.EXTERNALSCRIPTDEPENDENCIES 
+.RELEASENOTES
+#>
+
 <#
 .SYNOPSIS
 Get-CMUnusedSources will tell you what folders are not used by ConfigMgr in a given path.
@@ -72,7 +88,7 @@ C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation F:\ -SiteServer SCCM -
 
 .NOTES
 Author:     Adam Cook (@codaamok)
-Updated:    19/07/2019
+Updated:    08/09/2019
 License:    GLP-3.0
 Source:     https://github.com/codaamok/Get-CMUnusedSources  
 #>
