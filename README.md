@@ -163,7 +163,7 @@ The source path for each content object is manipulated to create every possible 
 F:\Applications\7zip\x64
 ````
 
-In the above example, the script discovered the local path for the `Applications$` share was `F:\Applications` and that `SomeOtherSharedFolder$` was another share that also resolves to the same local path. This path permutation enables the script to identify used folders that could use different absolute paths but resolve to the same folder.
+In the above example, the script discovered the local path for the `Applications$` share was `F:\Applications` and that `SomeOtherSharedFolder$` was another share that also resolves to the same local path. This path permutation enables the script to identify used folders that could use different paths but resolve to the same location.
 
 Once all the folders and ConfigrMgr content objects have been gathered, it begins iterating through through each folder, and for each folder it iterates over all content objects to determine if said folder is used by any content objects. 
 
@@ -184,16 +184,21 @@ The `UsedBy` property can have one or more of the following values:
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications
 Starting
 Gathering folders: \\fileserver\Applications$
-Number of folders: 40
+Number of gathered folders: 41
 Gathering content objects: Application
-Number of content objects: 16
-Determining unused folders, using 2 threads
+Number of gathered content objects: 16
+Determining unused folders, using 4 threads
+Adding jobs to queue
+Waiting for jobs to complete
+Done determining unused folders
+Calculating used disk space by unused folders
+Done calculating used disk space by unused folders
 Content objects: 16
-Folders at \\fileserver\Applications$: 40
-Folders where access denied: 0
-Folders unused: 11
-Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
-Runtime: 00:00:07.2891577
+Folders at \\fileserver\Applications$: 41
+Folders where access denied: 2
+Folders unused: 13
+Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 5.86 MB
+Runtime: 00:00:14.2988987
 
 PS C:\> $result | Select -First 10
 
@@ -244,9 +249,9 @@ Folder                                UsedBy
 ...
 ```
 
-The `-ExportCMContentObjects` is also a useful switch for this task. This is an export of the PSObject from the function `Get-CMContent` which is pretty much all of the ConfigMgr cmdlets iterating over all the content objects and just grabbing the name, unique ID and source path. 
+The `-ExportCMContentObjects` is also a useful switch for this task. This is an export of the PSObject from the function `Get-CMContent` which is pretty much all of the ConfigMgr cmdlets iterating over all the content objects.
 
-That should offer you more confidence because it is the same as running the ConfigMgr cmdlets yourself but with just the following properties:
+That should offer you more confidence because it is the same as running the ConfigMgr cmdlets yourself but creating the following properties:
 
 - `ContentType`
 - `UniqueID`
@@ -255,11 +260,12 @@ That should offer you more confidence because it is the same as running the Conf
 - `SourcePathFlag`
 - `AllPaths`
 
-The `SourcePathFlag` property can have three values:
+The `SourcePathFlag` property is an enum which can have the following fours values:
 
-- `0` = `ERROR_SUCCESS`
-- `5` = `ERROR_ACCESS_DENIED`
-- `3` = `ERROR_PATH_NOT_FOUND`
+- `0` = `[FileSystemAccessState]::ERROR_SUCCESS`
+- `3` = `[FileSystemAccessState]::ERROR_PATH_NOT_FOUND`
+- `5` = `[FileSystemAccessState]::ERROR_ACCESS_DENIED`
+- `740` = `[FileSystemAccessState]::ERROR_ELEVATION_REQUIRED`
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
@@ -329,7 +335,7 @@ You'll see five tabs. In each of the tabs you'll be able to export that view to 
 
 ### All folders
 
-All of the folders under `-SourcesLocation` and their UsedBy status, same as what's returned by the script.
+All of the folders under `-SourcesLocation` and their UsedBy status (same as the PSObject returned by the script).
 
 ### Summary of not used folders
 
@@ -391,7 +397,7 @@ Example:
 
 You may spot some highlighted yellow warnings or red errors so I'll explain some of them here.
 
-> Unable to interpret path "x"
+### Unable to interpret path "x"
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -399,7 +405,7 @@ One of your content objects in ConfigMgr has a funky source path that I couldn't
 
 This would only be problematic for the content object(s) that experience this.
 
-> Server "x" is unreachable
+### Server "x" is unreachable
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -407,7 +413,7 @@ The server "x" that hosts the shared folder is unreachable; it failed a ping tes
 
 This would only be problematic for the content object(s) that experience this.
 
-> Could not update cache because could not get shared folders from: "x"
+### Could not update cache because could not get shared folders from: "x"
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -415,7 +421,7 @@ Could not query the Win32_Shares WMI class on the server "x" that hosts the shar
 
 This would only be problematic for the content object(s) that experience this.
 
-> Could not resolve share "x" on "y", either because it does not exist or could not query Win32_Share on server
+### Could not resolve share "x" on "y", either because it does not exist or could not query Win32_Share on server
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -423,7 +429,7 @@ Could not determine the local path of shared folder "x" because that information
 
 This would only be problematic for the content object(s) that experience this.
 
-> Couldn't determine path type for "x" so might have problems accessing folders that breach MAX_PATH limit, quitting...
+### Couldn't determine path type for "x" so might have problems accessing folders that breach MAX_PATH limit, quitting...
 
 Occurs during the gathering folders stage so we can prefix `-SourcesLocation` with `\\?\..` to workaround the 260 MAX_PATH limit.
 
@@ -431,7 +437,7 @@ This means that `-SourcesLocation` was in such bananas format that I could not d
 
 This is a terminating error. It's important for the script to be able to successfully gather all folders from `-SourcesLocation`.
 
-> Consider using -AltFolderSearch, quiting...
+### Consider using -AltFolderSearch, quiting...
 
 Occurs during the gathering folders stage.
 
@@ -439,7 +445,7 @@ Something went wrong trying to get all folders under `-SourcesLocation`.
 
 This is a terminating error. It's important for the script to be able to successfully gather all folders from `-SourcesLocation`.
 
-> Couldn't reset "x"
+### Couldn't reset "x"
 
 Occurs during the gathering folders stage so we can prefix `-SourcesLocation` with `\\?\..` to workaround the 260 MAX_PATH limit.
 
@@ -447,7 +453,7 @@ After the script has finished gathering folders it tries to remove the `\\?\..` 
 
 This should not impact the results.
 
-> Won't be able to determine unused folders with given local path while running remotely from site server, quitting
+### Won't be able to determine unused folders with given local path while running remotely from site server, quitting
 
 Occurs before gathering any content objects or folders.
 
@@ -455,7 +461,7 @@ You have given local path for `-SourcesLocation`. We need to ensure we don't pro
 
 This is a terminating error.
 
-> Unable to import PSWriteHtml module: "x"
+### Unable to import PSWriteHtml module: "x"
 
 Occurs before gathering any content objects or folders.
 
@@ -463,7 +469,7 @@ You have specified the switch to produce HTML report but do not have the [PSWrit
 
 This is a terminating error.
 
-> Failed to export PowerShell object: "x"
+### Failed to export PowerShell object: "x"
 
 Occurs after main execution and just before closing.
 
@@ -471,7 +477,7 @@ You have specified the switch to export either all ConfigMgr content objects or 
 
 The script will attempt to continue and close normally.
 
-> Failed to create HTML report: "x"
+### Failed to create HTML report: "x"
 
 Occurs after main execution and just before closing.
 
