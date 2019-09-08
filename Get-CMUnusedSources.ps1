@@ -332,6 +332,7 @@ Function Get-CMContent {
                 switch -regex ($Command) {
                     "^Get-CMApplication.+" {
                         $AppMgmt = [xml]$item.SDMPackageXML | Select-Object -ExpandProperty AppMgmtDigest
+                        $Retired = $item | Select-Object -ExpandProperty IsExpired
                         ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
                             $SourcePaths = $DeploymentType.Installer.Contents.Content.Location
                             # Using ForEach-Object because even if $SourcePaths is null, it will iterate null once which is ideal here where deployment types can have no source path.
@@ -347,6 +348,7 @@ Function Get-CMContent {
                                     ContentType     = "Application"
                                     UniqueID        = $DeploymentType | Select-Object -ExpandProperty LogicalName
                                     Name            = "{0}::{1}" -f $item.LocalizedDisplayName,$DeploymentType.Title.InnerText
+                                    IsRetired       = $Retired
                                     SourcePath      = $SourcePath
                                     SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
                                     AllPaths        = $GetAllPathsResult[1]
@@ -370,6 +372,7 @@ Function Get-CMContent {
                             ContentType     = "Driver"
                             UniqueID        = $item.CI_ID
                             Name            = $item.LocalizedDisplayName
+                            IsRetired       = "n/a"
                             SourcePath      = $SourcePath
                             SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
                             AllPaths        = $GetAllPathsResult[1]
@@ -399,6 +402,7 @@ Function Get-CMContent {
                             ContentType     = $ContentType
                             UniqueID        = $item.PackageId
                             Name            = $item.Name
+                            IsRetired       = "n/a"
                             SourcePath      = $SourcePath
                             SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
                             AllPaths        = $GetAllPathsResult[1]
@@ -1480,7 +1484,7 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($AllContentObjects | Select-Object ContentType, UniqueID, Name, SourcePath, SourcePathFlag) -PreContent {
+                            New-HTMLTable -DataTable ($AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths) -PreContent {
                                 "<span style='font-size: 1.2em; margin-left: 1em;'>All searched ConfigMgr content objects.</span>"
                             }
                         }
