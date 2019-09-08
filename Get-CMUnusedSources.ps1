@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION 1.0.2
+.VERSION 1.0.3
 .GUID 62980d1d-d263-4c01-b49c-e64502363127
 .AUTHOR Adam Cook (Twitter: @codaamok - website: cookadam.co.uk)
 .COMPANYNAME 
@@ -30,11 +30,11 @@ See the GitHub repository README for the documentation https://github.com/codaam
 .PARAMETER SourcesLocation
 The path to the directory you store your ConfigMgr sources. Can be a UNC or local path. Must be a valid path that you have read access to.
 
-.PARAMETER SiteCode
-The site code of the ConfigMgr site you wish to query for content objects.
-
 .PARAMETER SiteServer
 The site server of the given ConfigMgr site code. The server must be reachable over a network.
+
+.PARAMETER SiteCode
+The site code of the ConfigMgr site you wish to query for content objects.
 
 .PARAMETER Packages
 Specify this switch to include Packages within the search to determine unused content on disk.
@@ -87,14 +87,14 @@ Set the number of threads you wish to use for concurrent processing of this scri
 .OUTPUTS
 
 .EXAMPLE
-C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation \\sccm\Applications$ -SiteCode ACC -SiteServer SCCM -Applications -Log -LogFileSize 10MB -NumOfRotatedLogs 5 -ExportReturnObject -HtmlReport -Threads 2
+C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation \\sccm\Applications$ -SiteServer SCCM -Applications -Log -LogFileSize 10MB -NumOfRotatedLogs 5 -ExportReturnObject -HtmlReport -Threads 2
 
 .EXAMPLE
-C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation F:\ -SiteCode ACC -SiteServer SCCM -Log -HtmlReport
+C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation F:\ -SiteServer SCCM -Log -HtmlReport
 
 .NOTES
 Author:     Adam Cook (@codaamok)
-Updated:    11/08/2019
+Updated:    08/09/2019
 License:    GLP-3.0
 Source:     https://github.com/codaamok/Get-CMUnusedSources  
 #>
@@ -111,10 +111,7 @@ Param (
         }
     })]
     [string]$SourcesLocation,
-    [Parameter(Mandatory=$true, Position = 1, HelpMessage="ConfigMgr site code you are querying.")]
-    [ValidatePattern('^[a-zA-Z0-9]{3}$')]
-    [string]$SiteCode,
-    [Parameter(Mandatory=$true, Position = 2, HelpMessage="ConfigMgr site server of the site site code.")]
+    [Parameter(Mandatory=$true, Position = 1, HelpMessage="ConfigMgr site server of the site site code.")]
     [ValidateScript({
         If(!(Test-Connection -ComputerName $_ -Count 1 -ErrorAction SilentlyContinue)) {
             throw "Host `"$($_)`" is unreachable"
@@ -123,6 +120,9 @@ Param (
         }
     })]
     [string]$SiteServer,
+    [Parameter(Mandatory=$false, Position = 2, HelpMessage="ConfigMgr site code you are querying.")]
+    [ValidatePattern('^[a-zA-Z0-9]{3}$')]
+    [string]$SiteCode,
     [Parameter(Mandatory=$false, HelpMessage="Gather packages.")]
     [switch]$Packages,
     [Parameter(Mandatory=$false, HelpMessage="Gather applications.")]
@@ -352,6 +352,7 @@ Function Get-CMContent {
                 switch -regex ($Command) {
                     "^Get-CMApplication.+" {
                         $AppMgmt = [xml]$item.SDMPackageXML | Select-Object -ExpandProperty AppMgmtDigest
+                        $Retired = $item | Select-Object -ExpandProperty IsExpired
                         ForEach ($DeploymentType in $AppMgmt.DeploymentType) {
                             $SourcePaths = $DeploymentType.Installer.Contents.Content.Location
                             # Using ForEach-Object because even if $SourcePaths is null, it will iterate null once which is ideal here where deployment types can have no source path.
@@ -367,6 +368,7 @@ Function Get-CMContent {
                                     ContentType     = "Application"
                                     UniqueID        = $DeploymentType | Select-Object -ExpandProperty LogicalName
                                     Name            = "{0}::{1}" -f $item.LocalizedDisplayName,$DeploymentType.Title.InnerText
+                                    IsRetired       = $Retired
                                     SourcePath      = $SourcePath
                                     SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
                                     AllPaths        = $GetAllPathsResult[1]
@@ -390,6 +392,7 @@ Function Get-CMContent {
                             ContentType     = "Driver"
                             UniqueID        = $item.CI_ID
                             Name            = $item.LocalizedDisplayName
+                            IsRetired       = "n/a"
                             SourcePath      = $SourcePath
                             SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
                             AllPaths        = $GetAllPathsResult[1]
@@ -419,6 +422,7 @@ Function Get-CMContent {
                             ContentType     = $ContentType
                             UniqueID        = $item.PackageId
                             Name            = $item.Name
+                            IsRetired       = "n/a"
                             SourcePath      = $SourcePath
                             SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
                             AllPaths        = $GetAllPathsResult[1]
@@ -1103,10 +1107,20 @@ ForEach($item in $PSBoundParameters.GetEnumerator()) {
     Write-CMLogEntry -Value ("- {0}: {1}" -f $item.Key, $item.Value) -Severity 1 -Component "Initilisation"
 }
 
+# Try and detemrine site code from $SiteServer
+try {
+    $SiteCode = Get-CimInstance -ComputerName $SiteServer -ClassName SMS_ProviderLocation -Namespace "ROOT\SMS" -ErrorAction Stop | Select-Object -ExpandProperty SiteCode
+}
+catch {
+    $Message = "Could not determine site code, please provide it using the -SiteCote parameter, quiting"
+    Write-CMLogEntry -Value $MEssage -Severity 2 -Component "Initilisation"
+    throw $Message
+}
+
 # If user has given local path for $SourcesLocation, need to ensure we don't produce false positives where a similar folder structure exists on the remote machine and site server. e.g. packages let you specify local path on site server
 If ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SiteServer)) {
     $Message = "Won't be able to determine unused folders with given local path while running remotely from site server, quitting"
-    Write-CMLogEntry -Value $Message -Severity 2 -Component "Initilisation" -WriteHost
+    Write-CMLogEntry -Value $Message -Severity 2 -Component "Initilisation"
     throw $Message
 }
 
@@ -1490,7 +1504,7 @@ $AllFolders | ForEach-Object -Begin {
                 New-HTMLTab -Name $Title {
                     New-HTMLContent -HeaderText $Title {
                         New-HTMLPanel {
-                            New-HTMLTable -DataTable ($AllContentObjects | Select-Object ContentType, UniqueID, Name, SourcePath, SourcePathFlag) -PreContent {
+                            New-HTMLTable -DataTable ($AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths) -PreContent {
                                 "<span style='font-size: 1.2em; margin-left: 1em;'>All searched ConfigMgr content objects.</span>"
                             }
                         }
