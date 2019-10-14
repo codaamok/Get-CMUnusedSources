@@ -1109,13 +1109,17 @@ ForEach($item in $PSBoundParameters.GetEnumerator()) {
 
 # Try and detemrine site code from $SiteServer
 try {
-    If ([string]::IsNullOrEmpty($SiteCode)) {
-        $SiteCode = Get-CimInstance -ComputerName $SiteServer -ClassName SMS_ProviderLocation -Namespace "ROOT\SMS" -ErrorAction Stop | Select-Object -ExpandProperty SiteCode
+    If ([string]::IsNullOrEmpty($SiteCode) -eq $true) {
+        # Using a tmp variable because can't modify $SiteCode to fall outside of the ValidatePattern() attribute defined in the script's parameter block
+        $tmp = Get-CimInstance -ComputerName $SiteServer -ClassName SMS_ProviderLocation -Namespace "ROOT\SMS" | Select-Object -ExpandProperty SiteCode
+        If ($tmp.count -gt 1) {
+            Write-CMLogEntry -Value ("Found multiple site codes: {0}" -f ($tmp -join ", ")) -Severity 1 -Component "Initilisation" -WriteHost
+            throw
+        } Else {
+            # Reasonable assurance now the value confines to what's defined in ValidatePattern() attribute, so go ahead and reassign
+            $SiteCode = $tmp
+        }
         Write-CMLogEntry -Value ("Using site code: {0}" -f $SiteCode) -Severity 1 -Component "Initilisation" -WriteHost
-    }
-    If ($SiteCode.count -gt 1) {
-        Write-CMLogEntry -Value ("Found multiple site codes: {0}" -f $SiteCode -join ", ") -Severity 1 -Component "Initilisation" -WriteHost
-        throw
     }
 }
 catch {
