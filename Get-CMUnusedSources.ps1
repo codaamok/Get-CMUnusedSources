@@ -1109,11 +1109,18 @@ ForEach($item in $PSBoundParameters.GetEnumerator()) {
 
 # Try and detemrine site code from $SiteServer
 try {
-    $SiteCode = Get-CimInstance -ComputerName $SiteServer -ClassName SMS_ProviderLocation -Namespace "ROOT\SMS" -ErrorAction Stop | Select-Object -ExpandProperty SiteCode
+    If ([string]::IsNullOrEmpty($SiteCode)) {
+        $SiteCode = Get-CimInstance -ComputerName $SiteServer -ClassName SMS_ProviderLocation -Namespace "ROOT\SMS" -ErrorAction Stop | Select-Object -ExpandProperty SiteCode
+        Write-CMLogEntry -Value ("Using site code: {0}" -f $SiteCode) -Severity 1 -Component "Initilisation" -WriteHost
+    }
+    If ($SiteCode.count -gt 1) {
+        Write-CMLogEntry -Value ("Found multiple site codes: {0}" -f $SiteCode -join ", ") -Severity 1 -Component "Initilisation" -WriteHost
+        throw
+    }
 }
 catch {
     $Message = "Could not determine site code, please provide it using the -SiteCode parameter, quiting"
-    Write-CMLogEntry -Value $MEssage -Severity 2 -Component "Initilisation"
+    Write-CMLogEntry -Value $Message -Severity 2 -Component "Initilisation"
     throw $Message
 }
 
