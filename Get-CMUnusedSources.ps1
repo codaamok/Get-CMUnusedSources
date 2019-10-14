@@ -1112,7 +1112,7 @@ try {
     $SiteCode = Get-CimInstance -ComputerName $SiteServer -ClassName SMS_ProviderLocation -Namespace "ROOT\SMS" -ErrorAction Stop | Select-Object -ExpandProperty SiteCode
 }
 catch {
-    $Message = "Could not determine site code, please provide it using the -SiteCote parameter, quiting"
+    $Message = "Could not determine site code, please provide it using the -SiteCode parameter, quiting"
     Write-CMLogEntry -Value $MEssage -Severity 2 -Component "Initilisation"
     throw $Message
 }
