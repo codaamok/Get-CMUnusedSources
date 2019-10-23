@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION 1.0.3
+.VERSION 1.0.4
 .GUID 62980d1d-d263-4c01-b49c-e64502363127
 .AUTHOR Adam Cook (Twitter: @codaamok - website: cookadam.co.uk)
 .COMPANYNAME 
@@ -94,7 +94,7 @@ C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation F:\ -SiteServer SCCM -
 
 .NOTES
 Author:     Adam Cook (@codaamok)
-Updated:    08/09/2019
+Updated:    23/10/2019
 License:    GLP-3.0
 Source:     https://github.com/codaamok/Get-CMUnusedSources  
 #>
