@@ -249,9 +249,9 @@ Folder                                UsedBy
 ...
 ```
 
-The `-ExportCMContentObjects` is also a useful switch for this task. This is an export of the PSObject from the function `Get-CMContent` which is pretty much all of the ConfigMgr cmdlets iterating over all the content objects.
+The `-ExportCMContentObjects` is also a useful switch for this task because it produces an XML export of the result produced by `Get-CMContent`. `Get-CMContent` is a function within the script that retrieves content objects using the Configuration Manager PowerShell cmdlets and selecting only key propertiest.
 
-That should offer you more confidence because it is the same as running the ConfigMgr cmdlets yourself but creating the following properties:
+For all the content objects `Get-CMContent` gathers, the following properties are selected:
 
 - `ContentType`
 - `UniqueID`
@@ -266,6 +266,8 @@ The `SourcePathFlag` property is an enum which can have the following fours valu
 - `3` = `[FileSystemAccessState]::ERROR_PATH_NOT_FOUND`
 - `5` = `[FileSystemAccessState]::ERROR_ACCESS_DENIED`
 - `740` = `[FileSystemAccessState]::ERROR_ELEVATION_REQUIRED`
+
+Below is an example of how to generate the result into XML and import it in to a different variable. From there you can do any filter you wish using `.Where()` or `Where-Object { .. }`.
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
