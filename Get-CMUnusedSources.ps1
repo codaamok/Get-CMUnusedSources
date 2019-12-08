@@ -166,7 +166,6 @@ TODO:
 
 #region Define PSDefaultParameterValues and other variables
 $JobId = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
-$CMPSSuppressFastNotUsedCheck = $true
 
 $PSDefaultParameterValues = @{
     "Write-CMLogEntry:Bias"                 = (Get-WmiObject -Class Win32_TimeZone | Select-Object -ExpandProperty Bias)
@@ -335,6 +334,7 @@ Function Get-CMContent {
         [string]$SiteCode
     )
     Begin {
+        $CMPSSuppressFastNotUsedCheck = $true
         [hashtable]$ShareCache = @{}
     }
     Process {
