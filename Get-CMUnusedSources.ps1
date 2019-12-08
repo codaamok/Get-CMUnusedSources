@@ -169,6 +169,7 @@ TODO:
 #>
 
 $JobId = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
+$CMPSSuppressFastNotUsedCheck = $true
 
 # Write-CMLogEntry
 $PSDefaultParameterValues["Write-CMLogEntry:Bias"]=(Get-WmiObject -Class Win32_TimeZone | Select-Object -ExpandProperty Bias)
