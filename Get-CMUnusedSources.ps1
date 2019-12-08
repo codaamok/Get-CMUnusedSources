@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION 1.0.4
+.VERSION 1.0.5
 .GUID 62980d1d-d263-4c01-b49c-e64502363127
 .AUTHOR Adam Cook (Twitter: @codaamok - website: cookadam.co.uk)
 .COMPANYNAME 
@@ -94,7 +94,7 @@ C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation F:\ -SiteServer SCCM -
 
 .NOTES
 Author:     Adam Cook (@codaamok)
-Updated:    23/10/2019
+Updated:    08/12/2019
 License:    GLP-3.0
 Source:     https://github.com/codaamok/Get-CMUnusedSources  
 #>
@@ -164,14 +164,10 @@ TODO:
         - if given F:\ or \\server\f$ currently Get-AllPaths does not determine shared folders that match the path used
 #>
 
-<#
-    Define PSDefaultParameterValues and other variables
-#>
-
+#region Define PSDefaultParameterValues and other variables
 $JobId = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
 $CMPSSuppressFastNotUsedCheck = $true
 
-# Write-CMLogEntry
 $PSDefaultParameterValues = @{
     "Write-CMLogEntry:Bias"                 = (Get-WmiObject -Class Win32_TimeZone | Select-Object -ExpandProperty Bias)
     "Write-CMLogEntry:Folder"               = ($PSCommandPath | Split-Path -Parent)
@@ -185,11 +181,9 @@ $PSDefaultParameterValues = @{
     "New-HTMLTable:ScrollX"                 = $true
     "New-HTMLTable:TextWhenNoData"          = "None"
 }
+#endregion
 
-<#
-    Define functions
-#>
-
+#region Define functions
 Function Write-CMLogEntry {
     <#
     .SYNOPSIS
@@ -1099,6 +1093,7 @@ Function Set-CMDrive {
     }
 
 }
+#endregion
 
 Write-CMLogEntry -Value "Starting" -Severity 1 -Component "Initilisation" -WriteHost
 
