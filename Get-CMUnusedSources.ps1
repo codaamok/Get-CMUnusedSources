@@ -168,7 +168,7 @@ TODO:
 $JobId = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
 
 $PSDefaultParameterValues = @{
-    "Write-CMLogEntry:Bias"                 = (Get-WmiObject -Class Win32_TimeZone | Select-Object -ExpandProperty Bias)
+    "Write-CMLogEntry:Bias"                 = (Get-CimInstance -ClassName Win32_TimeZone | Select-Object -ExpandProperty Bias)
     "Write-CMLogEntry:Folder"               = ($PSCommandPath | Split-Path -Parent)
     "Write-CMLogEntry:FileName"             = (($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + ".log")
     "Write-CMLogEntry:Enable"               = $Log.IsPresent
@@ -669,7 +669,7 @@ Function Get-AllSharedFolders {
     [hashtable]$AllShares = @{}
 
     try {
-        $Shares = (Get-WmiObject -ComputerName $Server -Class Win32_Share -ErrorAction Stop).Where( {-not [string]::IsNullOrEmpty($_.Path)} )
+        $Shares = (Get-CimInstance -ComputerName $Server -ClassName "Win32_Share" -ErrorAction Stop).Where( {-not [string]::IsNullOrEmpty($_.Path)} )
         ForEach ($Share in $Shares) {
             # The TrimEnd method is only really concerned for drive letter shares
             # as they're usually stored as f$ = "F:\" and this messes up Get-AllPaths a little
