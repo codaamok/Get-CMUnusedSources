@@ -608,7 +608,7 @@ Function Get-AllPaths {
 
     $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object -Process {
         $AltServer = $_
-        If ($Cache.$AltServer -ne $null) {
+        If ($null -ne $Cache.$AltServer) {
             # Get the share's local path
             $LocalPath = $Cache.$AltServer.GetEnumerator().Where( { $_.Key -eq $ShareName } ) | Select-Object -ExpandProperty Value
         }
@@ -837,7 +837,7 @@ Function Test-FileSystemAccess {
         try
         {
             [System.Security.AccessControl.FileSystemSecurity]$security = (Get-Item -Path ("FileSystem::{0}" -f $Path) -Force).GetAccessControl()
-            if ($security -ne $null)
+            if ($null -ne $security)
             {
                 [System.Security.AccessControl.AuthorizationRuleCollection]$rules = $security.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])
                 for([int]$i = 0; $i -lt $rules.Count; $i++)
@@ -1065,7 +1065,7 @@ Function Set-CMDrive {
     )
 
     # Import the ConfigurationManager.psd1 module 
-    If((Get-Module ConfigurationManager) -eq $null) {
+    If(-not(Get-Module ConfigurationManager)) {
         try {
             Import-Module ("{0}\..\ConfigurationManager.psd1" -f $ENV:SMS_ADMIN_UI_PATH)
         }
@@ -1078,7 +1078,7 @@ Function Set-CMDrive {
 
     try {
         # Connect to the site's drive if it is not already present
-        If((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue) -eq $null) {
+        If(-not (Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {
             New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $Server -ErrorAction Stop | Out-Null
         }
         # Set the current location to be the site code.
@@ -1089,7 +1089,7 @@ Function Set-CMDrive {
 
     } 
     catch {
-        If((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue) -ne $null) {
+        If(-not(Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {
             Set-Location $Path
             Remove-PSDrive -Name $SiteCode -Force
         }
