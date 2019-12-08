@@ -1352,7 +1352,7 @@ $AllFolders | ForEach-Object -Begin {
     [System.Collections.Generic.List[Object]]$Result = @()
 
     # Process runspaces, wait for their results and clean up when complete
-    $TotalRunspaces = $RSResults | Measure-Object | Select-Object -ExpandProperty Count
+    $TotalRunspaces = $RSResults.count
     while ($RSResults.Status -ne $null) {
         If ($NoProgress.IsPresent -eq $false) { 
             $TotalNotComplete = $RSResults.Where( { $_.Status -eq $null } ) | Measure-Object | Select-Object -ExpandProperty Count
