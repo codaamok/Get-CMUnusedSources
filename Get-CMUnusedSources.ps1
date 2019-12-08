@@ -1355,7 +1355,7 @@ $AllFolders | ForEach-Object -Begin {
     $TotalRunspaces = $RSResults.count
     while ($RSResults.Status -ne $null) {
         If ($NoProgress.IsPresent -eq $false) { 
-            $TotalNotComplete = $RSResults.Where( { $_.Status -eq $null } ) | Measure-Object | Select-Object -ExpandProperty Count
+            $TotalNotComplete = $RSResults.Where( { $_.Status -eq $null } ).count
             Write-Progress -Id 2 -Activity "Evaluating folders" -Status ("{0} folders remaining" -f ($TotalRunspaces-$TotalNotComplete)) -PercentComplete ($TotalNotComplete/$TotalRunspaces * 100) -ParentId 1
         }
         $Completed = $RSResults.Where( { $_.Status.IsCompleted -eq $true } )
@@ -1539,8 +1539,8 @@ $AllFolders | ForEach-Object -Begin {
     # Write summary to log
     Write-CMLogEntry -Value ("Content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders at {0}: {1}" -f $SourcesLocation, $AllFolders.count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders where access denied: {0}" -f ($Result.Where( { $_.UsedBy -like "Access denied*" } ) | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders unused: {0}" -f ($NotUsedFolders | Measure-Object | Select-Object -ExpandProperty Count)) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Folders where access denied: {0}" -f $Result.Where( { $_.UsedBy -like "Access denied*" } ).count) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Folders unused: {0}" -f $NotUsedFolders.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): {2} MB" -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", "), $SummaryNotUsedFoldersMB) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Runtime: {0}" -f $StopTime.ToString()) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value "Finished" -Severity 1 -Component "Exit"
