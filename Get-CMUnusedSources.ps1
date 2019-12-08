@@ -172,17 +172,19 @@ $JobId = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
 $CMPSSuppressFastNotUsedCheck = $true
 
 # Write-CMLogEntry
-$PSDefaultParameterValues["Write-CMLogEntry:Bias"]=(Get-WmiObject -Class Win32_TimeZone | Select-Object -ExpandProperty Bias)
-$PSDefaultParameterValues["Write-CMLogEntry:Folder"]=($PSCommandPath | Split-Path -Parent)
-$PSDefaultParameterValues["Write-CMLogEntry:FileName"]=(($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + ".log")
-$PSDefaultParameterValues["Write-CMLogEntry:Enable"]=$Log.IsPresent
-$PSDefaultParameterValues["Write-CMLogEntry:MaxLogFileSize"]=2MB
-$PSDefaultParameterValues["Write-CMLogEntry:MaxNumOfRotatedLogs"]=0
-$PSDefaultParameterValues["New-HTMLContent:SelectorColor"]="DeepSkyBlue"
-$PSDefaultParameterValues["New-HTMLContent:HeaderBackGroundColor"]="DeepSkyBlue"
-$PSDefaultParameterValues["New-HTMLTable:DisableColumnReorder"]=$true
-$PSDefaultParameterValues["New-HTMLTable:ScrollX"]=$true
-$PSDefaultParameterValues["New-HTMLTable:TextWhenNoData"]="None"
+$PSDefaultParameterValues = @{
+    "Write-CMLogEntry:Bias"                 = (Get-WmiObject -Class Win32_TimeZone | Select-Object -ExpandProperty Bias)
+    "Write-CMLogEntry:Folder"               = ($PSCommandPath | Split-Path -Parent)
+    "Write-CMLogEntry:FileName"             = (($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + ".log")
+    "Write-CMLogEntry:Enable"               = $Log.IsPresent
+    "Write-CMLogEntry:MaxLogFileSize"       = 2MB
+    "Write-CMLogEntry:MaxNumOfRotatedLogs"  = 0
+    "New-HTMLContent:SelectorColor"         = "DeepSkyBlue"
+    "New-HTMLContent:HeaderBackGroundColor" = "DeepSkyBlue"
+    "New-HTMLTable:DisableColumnReorder"    = $true
+    "New-HTMLTable:ScrollX"                 = $true
+    "New-HTMLTable:TextWhenNoData"          = "None"
+}
 
 <#
     Define functions
