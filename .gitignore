@@ -10,3 +10,7 @@
 
 # VSCode Files
 .vscode/*
+
+# Excel output from script
+*.xlsx
+*.xls
