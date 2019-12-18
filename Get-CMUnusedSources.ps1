@@ -174,7 +174,9 @@ $PSDefaultParameterValues = @{
     "Write-CMLogEntry:Enable"               = $Log.IsPresent
     "Write-CMLogEntry:MaxLogFileSize"       = 2MB
     "Write-CMLogEntry:MaxNumOfRotatedLogs"  = 0
-}
+    "Export-Excel:TableStyle"               = "Medium20"
+    "Export-Excel:AutoSize"                 = $true
+    "Export-Excel:AutoFilter"               = $true}
 #endregion
 
 #region Define functions
@@ -1454,16 +1456,22 @@ $AllFolders | ForEach-Object -Begin {
             Write-CMLogEntry -Value "Creating Excel report" -Severity 1 -Component "Exit" -WriteHost
             If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -PercentComplete 100 -ParentId 1 }
 
-            <#
-            Worksheets needed:
-                - $Result
-                - ($SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount)
-                - $NotUsedFolders
-                - ($AllContentObjects.Where( { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths)
-                - ($AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths)
-            #>
-            $ExcelFile = Join-Path -Path $PSCommandPath -ChildPath "_" | Join-Path -ChildPath $JobId | Join-Path -ChildPath ".xlsx"
-            Export-Excel -Path $ExcelFile -InputObject $Result -WorksheetName "Result" -Title "Result" -TableStyle "Medium20"
+            $Excel = Export-Excel -Path ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -InputObject $Result -WorksheetName "Result" -PassThru
+            
+            $Excel = Export-Excel -ExcelPackage $Excel -InputObject ($SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount) -WorksheetName "Summary" -PassThru
+            $Excel.Workbook.Worksheets["Summary"].InsertRow(1,1)
+            $LastRow = $Excel.Workbook.Worksheets["Summary"].Dimension.Rows
+            Set-ExcelRange -Range $Excel.Workbook.Worksheets["Summary"].Cells["A1"] -Value "Total:" -HorizontalAlignment "Right" -Bold
+            "B","C","D" | ForEach-Object { 
+                $Formula = "=SUM({0}3:{1}{2})" -f $_, $_, $LastRow
+                $Column = "{0}1" -f $_
+                Set-ExcelRange -Range $Excel.Workbook.Worksheets["Summary"].Cells[$Column] -Formula $Formula
+            }
+
+            $Excel = Export-Excel -ExcelPackage $Excel -InputObject $NotUsedFolders -WorksheetName "Not used folders" -PassThru
+            $Excel = Export-Excel -ExcelPackage $Excel -InputObject ($AllContentObjects.Where( { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths) -WorksheetName "Invalid paths" -PassThru
+            $Excel = Export-Excel -ExcelPackage $Excel -InputObject ($AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths) -WorksheetName "All content objects" -PassThru
+            Close-ExcelPackage -ExcelPackage $Excel
 
             If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -Completed -ParentId 1 }
             Write-CMLogEntry -Value "Done creating Excel report" -Severity 1 -Component "Exit" -WriteHost
