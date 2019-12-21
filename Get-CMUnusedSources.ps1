@@ -689,15 +689,16 @@ Function Get-AllSharedFolders {
 Function Get-AllFolders {
     <#
     .SYNOPSIS
-    Recrusively get all folders under $Path.
+        Recrusively get all folders under $Path.
     .DESCRIPTION
-    Get all folders in $Path. By default this function escapes the max path limit by prefixing $Path with the following: "\\?\UNC". This is what _mostly_ the driver for the PoSH 5.1 requirement.
-    Called by main body.
+        Get all folders in $Path. By default this function escapes the max path limit by prefixing $Path with the following: "\\?\UNC". This is what _mostly_ the driver for the PoSH 5.1 requirement.
+        Called by main body.
     .OUTPUTS
-    System.Object.Generic.List[String] of folder full names.
+        System.Object.Generic.List[String] of folder full names.
     #>
     Param(
         [string]$Path,
+        [string[]]$ExcludeFolders,
         [bool]$AltFolderSearch
     )
 
@@ -723,18 +724,33 @@ Function Get-AllFolders {
     }
     
     # Recursively get all folders
-    if ($AltFolderSearch -eq $true) {
+    if ($AltFolderSearch.IsPresent -eq $true) {
         [System.Collections.Generic.List[String]]$Folders = Start-AltFolderSearch -FolderName $Path
     }
     else {
         try {
-            [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName
+            if ($PSBoundParameters.ContainsKey("ExcludeFolders") {
+                [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName | ForEach-Object {
+                    ForEach ($Folder in $ExcludeFolders) {
+                        if ($_.StartsWith($Folder)) {
+                            break
+                        }
+                        else {
+                            $_
+                        }
+                    }
+                }
+            }
+            else {
+                [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName
+            }
         }
         catch {
             $Message = "Consider using -AltFolderSearch ({0}), quiting..." -f $GetChildItemErr.Message
             Write-CMLogEntry -Value $Message -Severity 3 -Component "GatherFolders"
             throw $Message
         }
+        
     }
 
     if ([string]::IsNullOrEmpty($Folders) -eq $true) {
@@ -1225,7 +1241,14 @@ $SiteServer = $FQDN.Split(".")[0]
 
 Write-CMLogEntry -Value ("Gathering folders: {0}" -f $SourcesLocation) -Severity 1 -Component "GatherFolders" -WriteHost
 if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status ("Gathering all folders at: {0}" -f $SourcesLocation) }
-$AllFolders = Get-AllFolders -Path $SourcesLocation -AltFolderSearch $AltFolderSearch.IsPresent
+$GetAllFoldersSplat = @{
+    Path            = $SourcesLocation
+    AltFolderSearch = $AltFolderSearch.IsPresent
+}
+if ($PSBoundParameters.ContainsKey("ExcludeFolders") {
+    $GetAllFoldersSplat.Add("ExcludeFolders", $ExcludeFolders)
+}
+$AllFolders = Get-AllFolders @GetAllFoldersSplat
 Write-CMLogEntry -Value ("Number of gathered folders: {0}" -f $AllFolders.count) -Severity 1 -Component "GatherFolders" -WriteHost
 
 # Gather content objects
