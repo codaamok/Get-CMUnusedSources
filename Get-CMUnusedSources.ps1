@@ -102,20 +102,20 @@
 Param (
     [Parameter(Mandatory=$true, Position = 0, HelpMessage="Valid path (local or remote0 to where you store you ConfigMgr sources.")]
     [ValidateScript({
-        If (!([System.IO.Directory]::Exists($_))) {
+        if (!([System.IO.Directory]::Exists($_))) {
             throw "Invalid path or access denied"
-        } ElseIf (!($_ | Test-Path -PathType Container)) {
+        } elseif (!($_ | Test-Path -PathType Container)) {
             throw "Value must be a directory, not a file"
-        } Else {
+        } else {
             return $true
         }
     })]
     [string]$SourcesLocation,
     [Parameter(Mandatory=$true, Position = 1, HelpMessage="ConfigMgr site server of the site site code.")]
     [ValidateScript({
-        If(!(Test-Connection -ComputerName $_ -Count 1 -ErrorAction SilentlyContinue)) {
+        if (!(Test-Connection -ComputerName $_ -Count 1 -ErrorAction SilentlyContinue)) {
             throw "Host `"$($_)`" is unreachable"
-        } Else {
+        } else {
             return $true
         }
     })]
@@ -224,20 +224,20 @@ Function Write-CMLogEntry {
     )
 
     # Runs this regardless of $Enable value
-    If ($WriteHost.IsPresent -eq $true) {
+    if ($WriteHost.IsPresent -eq $true) {
         Write-Host $Value
     }
 
-    If ($Enable.IsPresent -eq $true) {
+    if ($Enable.IsPresent -eq $true) {
         # Determine log file location
         $LogFilePath = Join-Path -Path $Folder -ChildPath $FileName
 
-        If ((([System.IO.FileInfo]$LogFilePath).Exists) -And ($MaxLogFileSize -ne 0)) {
+        if ((([System.IO.FileInfo]$LogFilePath).Exists) -And ($MaxLogFileSize -ne 0)) {
 
             # Get log size in bytes
             $LogFileSize = [System.IO.FileInfo]$LogFilePath | Select-Object -ExpandProperty Length
 
-            If ($LogFileSize -ge $MaxLogFileSize) {
+            if ($LogFileSize -ge $MaxLogFileSize) {
 
                 # Get log file name without extension
                 $LogFileNameWithoutExt = $FileName -replace ([System.IO.Path]::GetExtension($FileName))
@@ -400,10 +400,10 @@ Function Get-CMContent {
                     }
                     default {
                         # OS images and boot iamges are absolute paths to files
-                        If (($Command -match ("^Get-CMOperatingSystemImage.+")) -Or ($Command -match ("^Get-CMBootImage.+"))) {
+                        if (($Command -match ("^Get-CMOperatingSystemImage.+")) -Or ($Command -match ("^Get-CMBootImage.+"))) {
                             $SourcePath = Split-Path $item.PkgSourcePath
                         }
-                        Else {
+                        else {
                             $SourcePath = $item.PkgSourcePath
                         }
                         
@@ -475,7 +475,7 @@ Function Get-AllPaths {
     [System.Collections.Generic.List[Object]]$result = @()
     [hashtable]$AllPaths = @{}
 
-    If (([string]::IsNullOrEmpty($Path) -eq $false) -And ($Path -notmatch "^[a-zA-Z]:\\$")) {
+    if (([string]::IsNullOrEmpty($Path) -eq $false) -And ($Path -notmatch "^[a-zA-Z]:\\$")) {
         $Path = $Path.TrimEnd("\")
     }
 
@@ -538,8 +538,8 @@ Function Get-AllPaths {
 
     # Only determine if you have a record
     # Might be annoying if $Server is an IP, unreachable and revese lookup succeeds
-    If (Test-Connection -ComputerName $Server -Count 1 -ErrorAction SilentlyContinue) {
-        If ($Server -as [IPAddress]) {
+    if (Test-Connection -ComputerName $Server -Count 1 -ErrorAction SilentlyContinue) {
+        if ($Server -as [IPAddress]) {
             try {
                 # Reverse lookup
                 $FQDN = [System.Net.Dns]::GetHostEntry($Server) | Select-Object -ExpandProperty HostName
@@ -551,7 +551,7 @@ Function Get-AllPaths {
             }
             $IP = $Server
         }
-        Else {
+        else {
             try {
                 # Get FQDN even if $Server is FQDN, so we cut out $NetBIOS and resolve for $IP
                 $FQDN = [System.Net.Dns]::GetHostByName($Server) | Select-Object -ExpandProperty HostName
@@ -564,7 +564,7 @@ Function Get-AllPaths {
             $IP = (((Test-Connection $Server -Count 1 -ErrorAction SilentlyContinue)).IPV4Address).IPAddressToString
         }
     }
-    Else {
+    else {
         # Won't be able to query Win32_Class if unreachable so no point continuing
         Write-CMLogEntry -Value ("Server `"{0}`" is unreachable" -f $Server) -Severity 2 -Component "GatherContentObjects"
         $AllPaths.Add($Path, $null)
@@ -575,16 +575,16 @@ Function Get-AllPaths {
 
     ##### Update the cache of shared folders and their local paths
 
-    If (($Cache.Keys -contains $FQDN) -eq $false) {
+    if (($Cache.Keys -contains $FQDN) -eq $false) {
         # Do not yet have this server's shares cached
         # $AllSharedFolders is null if couldn't connect to serverr to get all shared folders
         $AllSharedFolders = Get-AllSharedFolders -Server $FQDN
-        If ([string]::IsNullOrEmpty($AllSharedFolders) -eq $false) {
+        if ([string]::IsNullOrEmpty($AllSharedFolders) -eq $false) {
             $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
                 $Cache.Add($_, $AllSharedFolders)
             }
         }
-        Else {
+        else {
             # Add null so on the next encounter of a server from a given UNC path, we don't wastefully try again
             $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
                 $Cache.Add($_, $null)
@@ -599,16 +599,16 @@ Function Get-AllPaths {
 
     $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object -Process {
         $AltServer = $_
-        If ($null -ne $Cache.$AltServer) {
+        if ($null -ne $Cache.$AltServer) {
             # Get the share's local path
             $LocalPath = $Cache.$AltServer.GetEnumerator().Where( { $_.Key -eq $ShareName } ) | Select-Object -ExpandProperty Value
         }
-        Else {
+        else {
             $LocalPath = $null
         }
         # If \\server\f$ then $LocalPath is "F:"
-        If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
-            If ($PathType -match "1|2") {
+        if ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
+            if ($PathType -match "1|2") {
                 # Add \\server\f$\path\to\shared\folder\on\disk
                 $AllPathsArr.Add(("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$'))
                 # Get other shared folders that point to the same path and add them to the AllPaths array
@@ -618,20 +618,20 @@ Function Get-AllPaths {
                 }
             }  
         }
-        Else {
+        else {
             Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`" from cache, either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatherContentObjects"
         }
         # Add the original path again but with the alternate server (FQDN / NetBIOS / IP)
         $AllPathsArr.Add("\\$($AltServer)\$($ShareName)$($ShareRemainder)")
     } -End {
-        If ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
+        if ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
             # Either of the below are important in case user is running local to site server and gave local path as $SourcesLocation
-            If (($LocalPath -match "^[a-zA-Z]:$") -And ($PathType -match "2|4")) {
+            if (($LocalPath -match "^[a-zA-Z]:$") -And ($PathType -match "2|4")) {
                 # Match if just a drive letter (WHY?!) and add it to AllPaths array
                 # This occurs if path type is 2 and the share points to root of a volume
                 $AllPathsArr.Add("$($LocalPath)\")
             }
-            Else {
+            else {
                 # Add the local path to AllPaths array
                 $AllPathsArr.Add("$($LocalPath)$($ShareRemainder)")
             }
@@ -641,7 +641,7 @@ Function Get-AllPaths {
     # Add all that's inside the AllPaths array to the AllPaths hashtable
     # Unfotunately adding stuff to hash table that already exists in there can be noisy to stderr in console
     ForEach ($item in $AllPathsArr) {
-        If (($AllPaths.Keys -notcontains $item) -eq $true) {
+        if (($AllPaths.Keys -notcontains $item) -eq $true) {
             $AllPaths.Add($item, $NetBIOS)
         }
     }
@@ -717,10 +717,10 @@ Function Get-AllFolders {
     }
     
     # Recursively get all folders
-    If ($DiffFolderSearch -eq $true) {
+    if ($DiffFolderSearch -eq $true) {
         [System.Collections.Generic.List[String]]$Folders = Start-AltFolderSearch -FolderName $Path
     }
-    Else {
+    else {
         try {
             [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse | Select-Object -ExpandProperty FullName
         }
@@ -731,10 +731,10 @@ Function Get-AllFolders {
         }
     }
 
-    If ([string]::IsNullOrEmpty($Folders) -eq $true) {
+    if ([string]::IsNullOrEmpty($Folders) -eq $true) {
         [System.Collections.Generic.List[String]]$Folders = @($Path)
     }
-    Else {
+    else {
         $Folders.Add($Path)
     }
 
@@ -1030,7 +1030,8 @@ function Measure-ChildItem {
 
         if ($ValueOnly) {
             [Math]::Round(($itemData[0] / $denominator), $Digits)
-        } else {
+        }
+        else {
             [PSCustomObject]@{
                 Path           = $Path
                 Size           = [Math]::Round(($itemData[0] / $denominator), $Digits)
@@ -1056,7 +1057,7 @@ Function Set-CMDrive {
     )
 
     # Import the ConfigurationManager.psd1 module 
-    If(-not(Get-Module ConfigurationManager)) {
+    if (-not(Get-Module ConfigurationManager)) {
         try {
             Import-Module ("{0}\..\ConfigurationManager.psd1" -f $ENV:SMS_ADMIN_UI_PATH)
         }
@@ -1069,18 +1070,18 @@ Function Set-CMDrive {
 
     try {
         # Connect to the site's drive if it is not already present
-        If(-not (Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {
+        if (-not (Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {
             New-PSDrive -Name $SiteCode -PSProvider CMSite -Root $Server -ErrorAction Stop | Out-Null
         }
         # Set the current location to be the site code.
         Set-Location ("{0}:\" -f $SiteCode) -ErrorAction Stop
 
         # Verify given sitecode
-        If((Get-CMSite -SiteCode $SiteCode | Select-Object -ExpandProperty SiteCode) -ne $SiteCode) { throw }
+        if ((Get-CMSite -SiteCode $SiteCode | Select-Object -ExpandProperty SiteCode) -ne $SiteCode) { throw }
 
     } 
     catch {
-        If(-not(Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {
+        if (-not(Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {
             Set-Location $Path
             Remove-PSDrive -Name $SiteCode -Force
         }
@@ -1126,13 +1127,14 @@ ForEach($item in $PSBoundParameters.GetEnumerator()) {
 
 # Try and detemrine site code from $SiteServer
 try {
-    If ([string]::IsNullOrEmpty($SiteCode) -eq $true) {
+    if ([string]::IsNullOrEmpty($SiteCode) -eq $true) {
         # Using a tmp variable because can't modify $SiteCode to fall outside of the ValidatePattern() attribute defined in the script's parameter block
         $tmp = Get-CimInstance -ComputerName $SiteServer -ClassName SMS_ProviderLocation -Namespace "ROOT\SMS" | Select-Object -ExpandProperty SiteCode
-        If ($tmp.count -gt 1) {
+        if ($tmp.count -gt 1) {
             Write-CMLogEntry -Value ("Found multiple site codes: {0}" -f ($tmp -join ", ")) -Severity 1 -Component "Initilisation" -WriteHost
             throw
-        } Else {
+        }
+        else {
             # Reasonable assurance now the value confines to what's defined in ValidatePattern() attribute, so go ahead and reassign
             $SiteCode = $tmp
         }
@@ -1146,14 +1148,14 @@ catch {
 }
 
 # If user has given local path for $SourcesLocation, need to ensure we don't produce false positives where a similar folder structure exists on the remote machine and site server. e.g. packages let you specify local path on site server
-If ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SiteServer)) {
+if ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SiteServer)) {
     $Message = "Won't be able to determine unused folders with given local path while running remotely from site server, quitting"
     Write-CMLogEntry -Value $Message -Severity 2 -Component "Initilisation"
     throw $Message
 }
 
 # Import ImportExcel module report if -ExcelReport is present
-If ($ExcelReport.IsPresent -eq $true) {
+if ($ExcelReport.IsPresent -eq $true) {
     try {
         Import-Module ImportExcel -ErrorAction Stop
     }
@@ -1163,7 +1165,7 @@ If ($ExcelReport.IsPresent -eq $true) {
         throw $Message
     }
     [version]$moduleVersion = (Get-Module ImportExcel | Sort-Object Version -Descending | Select-Object -ExpandProperty Version)[0]
-    If($moduleVersion -lt [version]"7.0.0") {
+    if ($moduleVersion -lt [version]"7.0.0") {
         $Message = "ImportExcel version is too old ({0}).  Requires 7.0.0+." -f $moduleVersion.ToString()
         Write-CMLogEntry -Value $Message -Severity 3 -Component "Initialisation"
         throw $Message
@@ -1203,10 +1205,10 @@ switch ($true) {
 
 # Get NetBIOS of given $SiteServer parameter so it's similar format as $env:COMPUTERNAME used in body during folder/content object for loop
 # And also for value pair in each content objects .AllPaths property (hashtable)
-If ($SiteServer -as [IPAddress]) {
+if ($SiteServer -as [IPAddress]) {
     $FQDN = [System.Net.Dns]::GetHostEntry($SiteServer) | Select-Object -ExpandProperty HostName
 }
-Else {
+else {
     $FQDN = [System.Net.Dns]::GetHostByName($SiteServer) | Select-Object -ExpandProperty HostName
 }
 $SiteServer = $FQDN.Split(".")[0]
@@ -1214,7 +1216,7 @@ $SiteServer = $FQDN.Split(".")[0]
 # Gather folders
 
 Write-CMLogEntry -Value ("Gathering folders: {0}" -f $SourcesLocation) -Severity 1 -Component "GatherFolders" -WriteHost
-If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status ("Gathering all folders at: {0}" -f $SourcesLocation) }
+if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status ("Gathering all folders at: {0}" -f $SourcesLocation) }
 $AllFolders = Get-AllFolders -Path $SourcesLocation -AltFolderSearch $AltFolderSearch.IsPresent
 Write-CMLogEntry -Value ("Number of gathered folders: {0}" -f $AllFolders.count) -Severity 1 -Component "GatherFolders" -WriteHost
 
@@ -1224,7 +1226,7 @@ $OriginalPath = Get-Location | Select-Object -ExpandProperty Path
 Set-CMDrive -SiteCode $SiteCode -Server $SiteServer -Path $OriginalPath
 
 Write-CMLogEntry -Value ("Gathering content objects: {0}" -f ($Commands -replace "Get-CM" -join ", ")) -Severity 1 -Component "GatherContentObjects" -WriteHost
-If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status ("Gathering CM content objects: {0}" -f ($Commands -replace "Get-CM" -join ", ")) }
+if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status ("Gathering CM content objects: {0}" -f ($Commands -replace "Get-CM" -join ", ")) }
 $AllContentObjects = Get-CMContent -Commands $Commands -SiteServer $SiteServer -SiteCode $SiteCode
 Write-CMLogEntry -Value ("Number of gathered content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "GatherContentObjects" -WriteHost
 
@@ -1232,7 +1234,7 @@ Set-Location $OriginalPath
 
 $AllFolders | ForEach-Object -Begin {
 
-    If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status "Determining unused folders" }
+    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status "Determining unused folders" }
     Write-CMLogEntry -Value ("Determining unused folders, using {0} threads" -f $Threads) -Severity 1 -Component "Processing" -WriteHost
     
     # Make Test-FileSystemAccess function available to all runspaces
@@ -1330,11 +1332,11 @@ $AllFolders | ForEach-Object -Begin {
 
     }
 
-    If ($NoProgress.IsPresent -eq $false) {
-        If ($AllFolders.count -gt 150) {
+    if ($NoProgress.IsPresent -eq $false) {
+        if ($AllFolders.count -gt 150) {
             [Int32]$FolderInterval = $AllFolders.count * 0.01
         }
-        Else {
+        else {
             $FolderInterval = 2
         }
     }
@@ -1345,8 +1347,8 @@ $AllFolders | ForEach-Object -Begin {
 
     $Folder = $_
 
-    If ($NoProgress.IsPresent -eq $false) {
-        If (($AllFolders.IndexOf($Folder) % $FolderInterval) -eq 0) {
+    if ($NoProgress.IsPresent -eq $false) {
+        if (($AllFolders.IndexOf($Folder) % $FolderInterval) -eq 0) {
             [Int32]$Percentage = ($AllFolders.IndexOf($Folder) / $AllFolders.count * 100)
             Write-Progress -Id 2 -Activity "Adding jobs to queue" -PercentComplete $Percentage -Status ("{0}% complete" -f $Percentage) -ParentId 1
         }
@@ -1368,7 +1370,7 @@ $AllFolders | ForEach-Object -Begin {
     # Process runspaces, wait for their results and clean up when complete
     $TotalRunspaces = $RSResults.count
     while ($RSResults.Status -ne $null) {
-        If ($NoProgress.IsPresent -eq $false) { 
+        if ($NoProgress.IsPresent -eq $false) { 
             $TotalNotComplete = $RSResults.Where( { $_.Status -eq $null } ).count
             Write-Progress -Id 2 -Activity "Evaluating folders" -Status ("{0} folders remaining" -f ($TotalRunspaces-$TotalNotComplete)) -PercentComplete ($TotalNotComplete/$TotalRunspaces * 100) -ParentId 1
         }
@@ -1388,18 +1390,18 @@ $AllFolders | ForEach-Object -Begin {
     Write-CMLogEntry -Value "Done determining unused folders" -Severity 1 -Component "Processing" -WriteHost
 
     # Update Write-Progress
-    If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Evaluating folders" -Completed -ParentId 1 }
-    If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 100 -Status "Finishing up" }
+    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Evaluating folders" -Completed -ParentId 1 }
+    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 100 -Status "Finishing up" }
 
     Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
-    If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
+    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
 
     # Calculate total MB used for each "Not used" folder
     # This is wasteful if -ExcelReport is not specified, but I really wanted $SummaryNotUsedFolders total in end result stats
     $NotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
 
     # Calculate total MB used on size unused by ConfigMgr
-    If ($NotUsedFolders.count -eq 0) {
+    if ($NotUsedFolders.count -eq 0) {
         # PSCustomObject created so that when $NotUsedFolders is blank, we get a worksheet in the Excel report with columns albeit with values equal to 0
         $SummaryNotUsedFolders = [PSCustomObject]@{
             Path            = 0
@@ -1409,13 +1411,13 @@ $AllFolders | ForEach-Object -Begin {
         }
         $SummaryNotUsedFoldersMB,$SummaryNotUsedFoldersFileCount,$SummaryNotUsedFoldersDirectoryCount = 0,0,0
     }
-    Else {
+    else {
         $SummaryNotUsedFolders = $NotUsedFolders | Sort-Object Folder | ForEach-Object {
             $current = $_
-            If (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
+            if (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
                 # Do nothing
             }
-            Else {
+            else {
                 $previous = $current
                 $current.Folder | Measure-ChildItem -Unit MB -Digits 2
             }
@@ -1429,9 +1431,9 @@ $AllFolders | ForEach-Object -Begin {
     # Write $Result to log file
     # I know Write-CMLogEntry has Enabled parameter but having it here too just makes sense - to save the gazillion of loops for something that may be disabled anyway
     # May consider deleting this section, enough about the result is written to file
-    If ($Log.IsPresent -eq $true) {
+    if ($Log.IsPresent -eq $true) {
         $Message = "Writing result to log file"
-        If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 25 -ParentId 1 }
+        if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 25 -ParentId 1 }
         Write-CMLogEntry -Value $Message -Severity 1 -Component "Processing" -WriteHost
         ForEach ($item in $Result) {
             switch -regex ($item.UsedBy) {
@@ -1447,10 +1449,10 @@ $AllFolders | ForEach-Object -Begin {
     }
 
     # Export $Result to file
-    If ($ExportReturnObject.IsPresent -eq $true) {
+    if ($ExportReturnObject.IsPresent -eq $true) {
         try {
             Write-CMLogEntry -Value "Exporting PowerShell return object" -Severity 1 -Component "Exit" -WriteHost
-            If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell return object" -PercentComplete 50 -ParentId 1 }
+            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell return object" -PercentComplete 50 -ParentId 1 }
             Export-Clixml -LiteralPath (($PSCommandPath | Split-Path -Parent) + "\" + ($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + "_result.xml") -InputObject $Result
             Write-CMLogEntry -Value "Done exporting PowerShell return object" -Severity 1 -Component "Exit" -WriteHost
         }
@@ -1460,10 +1462,10 @@ $AllFolders | ForEach-Object -Begin {
     }
 
     # Export $AllContentObjects to file
-    If ($ExportCMContentObjects.IsPresent -eq $true) {
+    if ($ExportCMContentObjects.IsPresent -eq $true) {
         try {
             Write-CMLogEntry -Value "Exporting PowerShell ConfigMgr content objects object" -Severity 1 -Component "Exit" -WriteHost
-            If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell ConfigMgr content objects object" -PercentComplete 75 -ParentId 1 }
+            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell ConfigMgr content objects object" -PercentComplete 75 -ParentId 1 }
             Export-Clixml -LiteralPath (($PSCommandPath | Split-Path -Parent) + "\" + ($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + "_cmobjects.xml") -InputObject $AllContentObjects
             Write-CMLogEntry -Value "Done exporting PowerShell ConfigMgr content objects object" -Severity 1 -Component "Exit" -WriteHost
         }
@@ -1473,10 +1475,10 @@ $AllFolders | ForEach-Object -Begin {
     }
 
     # Write $Result to Excel using ImportExcel
-    If ($ExcelReport.IsPresent -eq $true) {
+    if ($ExcelReport.IsPresent -eq $true) {
         try {
             Write-CMLogEntry -Value "Creating Excel report" -Severity 1 -Component "Exit" -WriteHost
-            If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -PercentComplete 100 -ParentId 1 }
+            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -PercentComplete 100 -ParentId 1 }
             $Excel = Export-Excel -Path ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -InputObject $Result -WorksheetName "Result" -PassThru
             Add-ExcelReportWorksheet -ExlPkg $Excel -Data @{
                 "Summary"               = $SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount
@@ -1485,7 +1487,7 @@ $AllFolders | ForEach-Object -Begin {
                 "All content objects"   = $AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths
             }
             Close-ExcelPackage -ExcelPackage $Excel
-            If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -Completed -ParentId 1 }
+            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -Completed -ParentId 1 }
             Write-CMLogEntry -Value "Done creating Excel report" -Severity 1 -Component "Exit" -WriteHost
         }
         catch {
