@@ -686,6 +686,38 @@ Function Get-AllSharedFolders {
     return $AllShares
 }
 
+Function Convert-UNCPath {
+    <#
+    .SYNOPSIS
+        Prefix the path the user gives us with \\?\ to avoid the 260 MAX_PATH limit
+        More info https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file#maximum-path-length-limitation
+    #>
+    Param(
+        [string[]]$Path
+    )
+    ForEach ($item in $Path) {
+        switch -regex ($item) {
+            "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9\\`~!@#$%^&(){}\'._ -]+" {
+                # Matches if it's a UNC path
+                # Could have queried .IsUnc property on [System.Uri] object but I wanted to verify user hadn't first given us \\?\ path type
+                $item -replace "^\\\\", "\\?\UNC\"
+                break
+            }
+            "^[a-zA-Z]:\\" { 
+                # Matches if starts with drive letter
+                "\\?\" + $item
+                break
+            }
+            default {
+                $Message = "Couldn't determine path type for `"{0}`" so might have problems accessing folders that breach MAX_PATH limit, quitting..." -f $item
+                Write-CMLogEntry -Value $Message -Severity 2 -Component "GatherFolders"
+                throw $Message
+            }
+        }
+    }
+    
+}
+
 Function Get-AllFolders {
     <#
     .SYNOPSIS
@@ -702,42 +734,20 @@ Function Get-AllFolders {
         [bool]$AltFolderSearch
     )
 
-    # Prefix the path the user gives us with \\?\ to avoid the 260 MAX_PATH limit
-    # More info https://docs.microsoft.com/en-us/windows/desktop/fileio/naming-a-file#maximum-path-length-limitation
-    switch ($true) { 
-        ($Path -match "^\\\\[a-zA-Z0-9`~!@#$%^&(){}\'._-]+\\[a-zA-Z0-9\\`~!@#$%^&(){}\'._ -]+") {
-            # Matches if it's a UNC path
-            # Could have queried .IsUnc property on [System.Uri] object but I wanted to verify user hadn't first given us \\?\ path type
-            $Path = $Path -replace "^\\\\", "\\?\UNC\"
-            break
-        }
-        ($Path -match "^[a-zA-Z]:\\") {
-            # Matches if starts with drive letter
-            $Path = "\\?\" + $Path
-            break
-        }
-        default {
-            $Message = "Couldn't determine path type for `"{0}`" so might have problems accessing folders that breach MAX_PATH limit, quitting..." -f $Path
-            Write-CMLogEntry -Value $Message -Severity 2 -Component "GatherFolders"
-            throw $Message
-        }
-    }
+    $Path = Convert-UNCPath -Path $Path
+
+    $ExcludeFolders = Convert-UNCPath -Path $ExcludeFolders
     
     # Recursively get all folders
-    if ($AltFolderSearch.IsPresent -eq $true) {
+    if ($AltFolderSearch -eq $true) {
         [System.Collections.Generic.List[String]]$Folders = Start-AltFolderSearch -FolderName $Path
     }
     else {
         try {
             if ($PSBoundParameters.ContainsKey("ExcludeFolders")) {
                 [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName | ForEach-Object {
-                    ForEach ($Folder in $ExcludeFolders) {
-                        if ($_.StartsWith($Folder)) {
-                            break
-                        }
-                        else {
-                            $_
-                        }
+                    if (-not($ExcludeFolders -match [Regex]::Escape($_))) {
+                        $_
                     }
                 }
             }
@@ -778,9 +788,8 @@ Function Get-AllFolders {
         }
     }
     
-    $Folders = $Folders | Sort-Object
+    $Folders | Sort-Object
 
-    return $Folders
 }
 Function Start-AltFolderSearch {
     <#
