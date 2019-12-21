@@ -728,10 +728,10 @@ Function Get-AllFolders {
     }
     else {
         try {
-            [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse | Select-Object -ExpandProperty FullName
+            [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName
         }
         catch {
-            $Message = "Consider using -AltFolderSearch, quiting..."
+            $Message = "Consider using -AltFolderSearch ({0}), quiting..." -f $GetChildItemErr.Message
             Write-CMLogEntry -Value $Message -Severity 3 -Component "GatherFolders"
             throw $Message
         }
