@@ -11,7 +11,7 @@
 7. [Runtime stats](#runtime-stats)
 8. [Process overview](#process-overview)
 9. [Validating the results](#validating-the-results)
-10. [The HTML report explained](#the-html-report-explained)
+10. [The Excel report explained](#the-excel-report-explained)
 11. [The log file explained](#the-log-file-explained)
 12. [Parameters](#parameters)
 13. [Author](#author)
@@ -66,7 +66,7 @@ Folder                                    UsedBy
 
 - ConfigMgr console installed
 - PowerShell 5.1 or newer
-- [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) module installed (only if you specify `-HtmlReport` switch). See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
+- [ImportExcel](https://github.com/dfinke/ImportExcel) module installed (only if you specify `-ExcelReport` switch). See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
 
 ## Getting started
 
@@ -85,7 +85,7 @@ Running the script without anything other than the mandatory parameters will do 
 - Show overall progress using Write-Progress
 - No logging
 - No PowerShell object export
-- No HTML report
+- No Excel report
 - Number of threads will be number from environment variable `NUMBER_OF_PROCESSORS`
 
 ## What can it do
@@ -95,28 +95,28 @@ Running the script without anything other than the mandatory parameters will do 
 - `-SourcesLocation` can be a UNC or local path and works around the 260 MAX_PATH limit.
 - `-Threads` to control how many threads are used for concurrent processing.
 - Optionally exports PowerShell objects to file of either all your ConfigMgr content objects or the result. You can later reimport these using `Import-Clixml`.
-- Optionally create a HTML report where you can then export to CSV/PDF/XSLX.
+- Optionally create a Excel.
 - Optionally filter the ConfigMgr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Optionally create a log file.
-- Optionally produce a HTML report, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
+- Optionally produce an Excel report, with thanks to [ImportExcel](https://github.com/dfinke/ImportExcel). See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
 
 ## Examples
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteServer "server.contoso.com" -Log -ExportReturnObject -HtmlReport -Threads 2
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteServer "server.contoso.com" -Log -ExportReturnObject -ExcelReport -Threads 2
 ```
 
 - Gather all content objects relevant to site code `XYZ`.
 - Gather all folders under `\\server\folder`.
 - A log file will be created in the same directory as the script and rolled over when it reaches 2MB, with no limit on number of rotated logs to keep.
-- When finished, the object returned by the script will be exported and also the HTML report too.
+- When finished, the object returned by the script will be exported and also the Excel report too.
 - 2 threads will be used.
 - Returns the result PowerShell object to variable `$result`.
 
 ---
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -SiteServer "server.contoso.com" -Log -NoProgress -ExportReturnObject -ExportCMContentObjects -Packages -Applications -OSImages -OSUpgradeImages -HtmlReport
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -SiteServer "server.contoso.com" -Log -NoProgress -ExportReturnObject -ExportCMContentObjects -Packages -Applications -OSImages -OSUpgradeImages -ExcelReport
 ```
 
 - Gather all content objects relevant to site code `XYZ`.
@@ -126,7 +126,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -S
 - Exports the result PowerShell object to file saved in the same directory as the script.
 - Exports all searched ConfigMgr content objects to file saved in the same directory as the script.
 - Gathers only Packages, Applications, Operating System images and Operating System upgrade images content objects.
-- Produces a HTML report saved in the same directory as the script. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
+- Produces an Excel report saved in the same directory as the script. See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
 - Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` because that's the default value of `-Threads`.
 - Returns the result PowerShell object to variable `$result`
 
@@ -218,7 +218,7 @@ Folder                                    UsedBy
 
 ## Validating the results
 
-You could verify if a folder structure is used or not by checking out the results of the script. The HTML report has a tab "All content objects" where you can verify if part or all of the path you're curious about is used.
+You could verify if a folder structure is used or not by checking out the results of the script. The Excel report has a tab "All content objects" where you can verify if part or all of the path you're curious about is used.
 
 You can easily achieve this verification with PowerShell:
 
@@ -329,17 +329,17 @@ F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
 \\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
 ```
 
-## The HTML report explained
+## The Excel report explained
 
-I honestly love that [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) exists. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
+See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
 
-You'll see five tabs. In each of the tabs you'll be able to export that view to Excel, CSV or PDF and filter the results within the browser using the search box at the top right - the criteria applies to all columns.
+You'll see five tabs: `Result`, `Summary`, `Not used folders`, `All content objects` and `Invalid paths`.
 
-### All folders
+### Result
 
 All of the folders under `-SourcesLocation` and their UsedBy status (same as the PSObject returned by the script).
 
-### Summary of not used folders
+### Summary
 
 A list of folders that were determined not used under the given path by the searched content objects. It does not include child folders, only "unique root folders", so this produces an accurate measurement of capacity used.
 
@@ -463,11 +463,11 @@ You have given local path for `-SourcesLocation`. We need to ensure we don't pro
 
 This is a terminating error.
 
-### Unable to import PSWriteHtml module: "x"
+### Unable to import ImportExcel module: "x"
 
 Occurs before gathering any content objects or folders.
 
-You have specified the switch to produce HTML report but do not have the [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) module installed.
+You have specified the switch to produce Excel report but do not have the [ImportExcel](https://github.com/dfinke/ImportExcel) module installed.
 
 This is a terminating error.
 
@@ -479,11 +479,11 @@ You have specified the switch to export either all ConfigMgr content objects or 
 
 The script will attempt to continue and close normally.
 
-### Failed to create HTML report: "x"
+### Failed to create Excel report: "x"
 
 Occurs after main execution and just before closing.
 
-You have specified the switch to produce a HTML report and there was a problem doing so.
+You have specified the switch to produce a Excel report and there was a problem doing so.
 
 The script will attempt to continue and close normally.
 
@@ -557,9 +557,9 @@ Specify this option if you wish to export the PowerShell result object to an XML
 
 Specify this option if you wish to export all ConfigMgr content objects to an XML file. The XML file be saved to the same directory as this script with a name of `<scriptname>_<datetime>_cmobjects.xml`. It can easily be reimported using `Import-Clixml` cmdlet.
 
-### -HtmlReport
+### -ExcelReport
 
-Specify this option to enable the generation for a HTML report of the result. Doing this will force you to have the PSWriteHtml module installed. For more information on [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML). The HTML file will be saved to the same directory as this script with a name of `<scriptname>_<datetime>.html`.
+Specify this option to enable the generation for an Excel report of the result. Doing this will force you to have the ImportExcel module installed. For more information on ImportExcel: https://github.com/dfinke/ImportExcel. The .xlsx file will be saved to the same directory as this script with a name of <scriptname>_<datetime>.xlsx.
 
 ### -Threads
 

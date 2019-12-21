@@ -1400,7 +1400,7 @@ $AllFolders | ForEach-Object -Begin {
 
     # Calculate total MB used on size unused by ConfigMgr
     If ($NotUsedFolders.count -eq 0) {
-        # PSCustomObject created so that when $NotUsedFolders is blank, PSWriteHtml won't print warnings because of missing properties when trying to create merge headers
+        # PSCustomObject created so that when $NotUsedFolders is blank, we get a worksheet in the Excel report with columns albeit with values equal to 0
         $SummaryNotUsedFolders = [PSCustomObject]@{
             Path            = 0
             Size            = 0
