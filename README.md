@@ -501,6 +501,10 @@ The site server of the given ConfigMgr site code. The server must be reachable o
 
 The site code of the ConfigMgr site you wish to query for content objects.
 
+### -ExcludeFolders
+
+An array of folders that you want to exclude the script from checking, which should be absolute paths under the path given for -SourcesLocation.
+
 ### -Packages
 
 Specify this switch to include Packages within the search to determine unused content on disk.

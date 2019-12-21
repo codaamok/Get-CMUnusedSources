@@ -36,6 +36,9 @@
 .PARAMETER SiteCode
     The site code of the ConfigMgr site you wish to query for content objects.
 
+.PARAMETER ExcludeFolders
+    An array of folders that you want to exclude the script from checking, which should be absolute paths under the path given for -SourcesLocation.
+
 .PARAMETER Packages
     Specify this switch to include Packages within the search to determine unused content on disk.
 
@@ -123,6 +126,8 @@ Param (
     [Parameter(Mandatory=$false, Position = 2, HelpMessage="ConfigMgr site code you are querying.")]
     [ValidatePattern('^[a-zA-Z0-9]{3}$')]
     [string]$SiteCode,
+    [Parameter(Mandatory=$false, HelpMessage="An array of folders to exclude under -SourcesLocation.")]
+    [string[]]$ExcludeFolders,
     [Parameter(Mandatory=$false, HelpMessage="Gather packages.")]
     [switch]$Packages,
     [Parameter(Mandatory=$false, HelpMessage="Gather applications.")]
@@ -693,7 +698,7 @@ Function Get-AllFolders {
     #>
     Param(
         [string]$Path,
-        [bool]$DiffFolderSearch
+        [bool]$AltFolderSearch
     )
 
     # Prefix the path the user gives us with \\?\ to avoid the 260 MAX_PATH limit
@@ -718,7 +723,7 @@ Function Get-AllFolders {
     }
     
     # Recursively get all folders
-    if ($DiffFolderSearch -eq $true) {
+    if ($AltFolderSearch -eq $true) {
         [System.Collections.Generic.List[String]]$Folders = Start-AltFolderSearch -FolderName $Path
     }
     else {
@@ -776,11 +781,13 @@ Function Start-AltFolderSearch {
     .OUTPUTS
     System.Object.Generic.List[String] of folder full names.
     #>
-    Param([string]$FolderName)
+    Param(
+        [string]$FolderName
+    )
 
     # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
     # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
-    # working dir when it reaches a null value, so is null check is needed
+    # working dir when it reaches a null value, so a null check is needed
     [System.Collections.Generic.List[String]]$Folders = @((Get-ChildItem -Path $FolderName -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName).Where( { [string]::IsNullOrEmpty($_) -eq $false } ))
 
     ForEach($Folder in $Folders) {
