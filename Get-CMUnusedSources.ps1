@@ -176,7 +176,8 @@ $PSDefaultParameterValues = @{
     "Write-CMLogEntry:MaxNumOfRotatedLogs"  = 0
     "Export-Excel:TableStyle"               = "Medium20"
     "Export-Excel:AutoSize"                 = $true
-    "Export-Excel:AutoFilter"               = $true}
+    "Export-Excel:AutoFilter"               = $true
+}
 #endregion
 
 #region Define functions
