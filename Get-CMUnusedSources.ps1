@@ -729,7 +729,7 @@ Function Get-AllFolders {
     }
     else {
         try {
-            if ($PSBoundParameters.ContainsKey("ExcludeFolders") {
+            if ($PSBoundParameters.ContainsKey("ExcludeFolders")) {
                 [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName | ForEach-Object {
                     ForEach ($Folder in $ExcludeFolders) {
                         if ($_.StartsWith($Folder)) {
@@ -750,7 +750,6 @@ Function Get-AllFolders {
             Write-CMLogEntry -Value $Message -Severity 3 -Component "GatherFolders"
             throw $Message
         }
-        
     }
 
     if ([string]::IsNullOrEmpty($Folders) -eq $true) {
@@ -1245,7 +1244,7 @@ $GetAllFoldersSplat = @{
     Path            = $SourcesLocation
     AltFolderSearch = $AltFolderSearch.IsPresent
 }
-if ($PSBoundParameters.ContainsKey("ExcludeFolders") {
+if ($PSBoundParameters.ContainsKey("ExcludeFolders")) {
     $GetAllFoldersSplat.Add("ExcludeFolders", $ExcludeFolders)
 }
 $AllFolders = Get-AllFolders @GetAllFoldersSplat
