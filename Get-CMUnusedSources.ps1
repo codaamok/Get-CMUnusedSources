@@ -1091,12 +1091,9 @@ Function Set-CMDrive {
 
 }
 
-Function Add-ExcelReportWorksheets {
-    [CmdletBinding()]
+Function Add-ExcelReportWorksheet {
     Param(
-        [Parameter(Mandatory)]
         [OfficeOpenXml.ExcelPackage]$ExlPkg,
-        [Parameter(Mandatory)]
         [Hashtable]$Data
     )
     ForEach ($item in $Data.GetEnumerator()) {
@@ -1481,7 +1478,7 @@ $AllFolders | ForEach-Object -Begin {
             Write-CMLogEntry -Value "Creating Excel report" -Severity 1 -Component "Exit" -WriteHost
             If ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -PercentComplete 100 -ParentId 1 }
             $Excel = Export-Excel -Path ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -InputObject $Result -WorksheetName "Result" -PassThru
-            Add-ExcelReportWorksheets -ExlPkg $Excel -Data @{
+            Add-ExcelReportWorksheet -ExlPkg $Excel -Data @{
                 "Summary"               = $SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount
                 "Not used folders"      = $NotUsedFolders
                 "Invalid paths"         = $AllContentObjects.Where( { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths
