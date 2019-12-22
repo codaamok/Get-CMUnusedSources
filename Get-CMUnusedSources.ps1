@@ -749,7 +749,9 @@ Function Get-AllFolders {
 
     $Path = Convert-UNCPath -Path $Path
 
-    $ExcludeFolders = Convert-UNCPath -Path $ExcludeFolders
+    $ExcludeFolders = Convert-UNCPath -Path $ExcludeFolders | ForEach-Object {
+        [Regex]::Escape($_)
+    }
     
     # Recursively get all folders
     if ($AltFolderSearch -eq $true) {
@@ -759,7 +761,7 @@ Function Get-AllFolders {
         try {
             if ($PSBoundParameters.ContainsKey("ExcludeFolders")) {
                 [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName | ForEach-Object {
-                    if (-not($ExcludeFolders -match [Regex]::Escape($_))) {
+                    if (-not($_ -match [String]::Join("|", $ExcludeFolders))) {
                         $_
                     }
                 }
