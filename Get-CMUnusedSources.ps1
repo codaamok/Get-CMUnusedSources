@@ -584,7 +584,7 @@ Function Get-AllPaths {
         # Do not yet have this server's shares cached
         # $AllSharedFolders is null if couldn't connect to serverr to get all shared folders
         $AllSharedFolders = Get-AllSharedFolders -Server $FQDN
-        if ([string]::IsNullOrEmpty($AllSharedFolders) -eq $false) {
+        If ($AllSharedFolders -is [Hashtable] -And ($AllSharedFolders.count -gt 0)) {
             $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
                 $Cache.Add($_, $AllSharedFolders)
             }
@@ -594,7 +594,6 @@ Function Get-AllPaths {
             $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
                 $Cache.Add($_, $null)
             }
-            Write-CMLogEntry -Value ("Could not update cache because could not get shared folders from: `"{0}`"" -f $FQDN) -Severity 2 -Component "GatherContentObjects"
         }
     }
 
@@ -670,8 +669,20 @@ Function Get-AllSharedFolders {
 
     [hashtable]$AllShares = @{}
 
+    $GetCimInstanceSplat = @{
+        ClassName       = "Win32_Share"
+        ErrorAction     = "Stop"
+        ErrorVariable   = "GetCimInstanceErr"
+    }
+
+    # Get-CimInstance uses WinRM if ComputerName is provided, which can throw access denied if console is elevated
+    # I would rather the below be in place rather than unnecessarily requiring elevated console
+    if ([System.Net.Dns]::GetHostEntry($env:COMPUTERNAME).HostName -ne $FQDN) {
+        $GetCimInstanceSplat.Add("ComputerName", $FQDN)
+    }
+
     try {
-        $Shares = (Get-CimInstance -ComputerName $Server -ClassName "Win32_Share" -ErrorAction Stop).Where( {-not [string]::IsNullOrEmpty($_.Path)} )
+        $Shares = (Get-CimInstance @GetCimInstanceSplat).Where( {-not [string]::IsNullOrEmpty($_.Path)} )
         ForEach ($Share in $Shares) {
             # The TrimEnd method is only really concerned for drive letter shares
             # as they're usually stored as f$ = "F:\" and this messes up Get-AllPaths a little
@@ -679,6 +690,9 @@ Function Get-AllSharedFolders {
         }
     }
     catch {
+        $Message = "Could not get shared folders from `"{0}`" ({1})" -f $GetCimInstanceErr.Message
+        Write-Warning $Message
+        Write-CMLogEntry -Value $Message -Severity 2 -Component "GatherContentObjects"
         $AllShares = $null
     }
 

@@ -415,13 +415,13 @@ The server "x" that hosts the shared folder is unreachable; it failed a ping tes
 
 This would only be problematic for the content object(s) that experience this.
 
-### Could not update cache because could not get shared folders from: "x"
+### Could not get shared folders from "x" (y)
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
-Could not query the Win32_Shares WMI class on the server "x" that hosts the shared folder.
+Could not query the Win32_Shares WMI class on the server "x" that hosts the shared folder. "y" is the exception message.
 
-This would only be problematic for the content object(s) that experience this.
+This would only be problematic for the content object(s) that have source path associated with this server and any of its shared folders.
 
 ### Could not resolve share "x" on "y", either because it does not exist or could not query Win32_Share on server
 
