@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION 1.0.6
+.VERSION 1.0.7
 .GUID 62980d1d-d263-4c01-b49c-e64502363127
 .AUTHOR Adam Cook (Twitter: @codaamok - website: cookadam.co.uk)
 .COMPANYNAME 
@@ -97,7 +97,6 @@
 
 .NOTES
     Author:     Adam Cook (@codaamok)
-    Updated:    08/12/2019
     License:    GLP-3.0
     Source:     https://github.com/codaamok/Get-CMUnusedSources  
 #>
