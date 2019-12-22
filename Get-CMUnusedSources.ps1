@@ -744,7 +744,7 @@ Function Get-AllFolders {
     Param(
         [string]$Path,
         [string[]]$ExcludeFolders,
-        [bool]$AltFolderSearch
+        [bool]$UseAltFolderSearch
     )
 
     $Path = Convert-UNCPath -Path $Path
@@ -754,8 +754,8 @@ Function Get-AllFolders {
     }
     
     # Recursively get all folders
-    if ($AltFolderSearch -eq $true) {
-        [System.Collections.Generic.List[String]]$Folders = Start-AltFolderSearch -FolderName $Path
+    if ($UseAltFolderSearch -eq $true) {
+        [System.Collections.Generic.List[String]]$Folders = Start-AltFolderSearch -FolderName $Path -ExcludeFolders $ExcludeFolders
     }
     else {
         try {
@@ -809,28 +809,31 @@ Function Get-AllFolders {
 Function Start-AltFolderSearch {
     <#
     .SYNOPSIS
-    Get all folders under $FolderName, but not recursively.
+        Get all folders under $FolderName, but not recursively.
     .DESCRIPTION
-    Get all folders under $FolderName but does not recursively get all folders for each and every child funder. 
-    This exists because in some environments Get-ChildItem would throw an exception "Not enough quota is available to process this command.". FullyQualifiedErrorId: "DirIOError,Microsoft.PowerShell.Commands.GetChildItemCommand".
-    While investigating the exception was thrown at around the 50k size of any collection type and packet traces showed SMBv1 packets returning similar exception message as by PoSH, some sort of quota limit.
-    Further testing on different storage systems using SMBv1 this exception was not reproducable.
-    Massive thanks to Chris Kibble for coming up with this work around and time to help troubleshoot!
-    Called by Get-AllFolders.
+        Get all folders under $FolderName but does not recursively get all folders for each and every child funder. 
+        This exists because in some environments Get-ChildItem would throw an exception "Not enough quota is available to process this command.". FullyQualifiedErrorId: "DirIOError,Microsoft.PowerShell.Commands.GetChildItemCommand".
+        While investigating the exception was thrown at around the 50k size of any collection type and packet traces showed SMBv1 packets returning similar exception message as by PoSH, some sort of quota limit.
+        Further testing on different storage systems using SMBv1 this exception was not reproducable.
+        Massive thanks to Chris Kibble for coming up with this work around and time to help troubleshoot!
+        Called by Get-AllFolders.
     .OUTPUTS
-    System.Object.Generic.List[String] of folder full names.
+        System.Object.Generic.List[String] of folder full names.
     #>
     Param(
-        [string]$FolderName
+        [string]$FolderName,
+        [string[]]$ExcludeFolders
     )
 
     # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
     # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
     # working dir when it reaches a null value, so a null check is needed
-    [System.Collections.Generic.List[String]]$Folders = @((Get-ChildItem -Path $FolderName -Directory -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName).Where( { [string]::IsNullOrEmpty($_) -eq $false } ))
-
-    ForEach($Folder in $Folders) {
-        $Folders.Add($(Start-AltFolderSearch -FolderName $Folder))
+    [System.Collections.Generic.List[String]]$Folders = @(Get-ChildItem -LiteralPath $FolderName -Directory | Select-Object -ExpandProperty FullName | Where-Object {
+        ([String]::IsNullOrEmpty($_) -eq $false) -And (-not($_ -match [String]::Join("|", $ExcludeFolders)))
+    })
+    
+    ForEach ($Folder in $Folders) {
+        Start-AltFolderSearch -FolderName $Folder -ExcludeFolders $ExcludeFolders
     }
 
     return $Folders
@@ -1169,7 +1172,7 @@ $StartTime = Get-Date
 
 # Write all parameters passed to script to log
 ForEach($item in $PSBoundParameters.GetEnumerator()) {
-    Write-CMLogEntry -Value ("- {0}: {1}" -f $item.Key, $item.Value) -Severity 1 -Component "Initilisation"
+    Write-CMLogEntry -Value ("- {0}: {1}" -f $item.Key, [String]::Join(",", $item.Value)) -Severity 1 -Component "Initilisation"
 }
 
 # Try and detemrine site code from $SiteServer
@@ -1265,8 +1268,8 @@ $SiteServer = $FQDN.Split(".")[0]
 Write-CMLogEntry -Value ("Gathering folders: {0}" -f $SourcesLocation) -Severity 1 -Component "GatherFolders" -WriteHost
 if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status ("Gathering all folders at: {0}" -f $SourcesLocation) }
 $GetAllFoldersSplat = @{
-    Path            = $SourcesLocation
-    AltFolderSearch = $AltFolderSearch.IsPresent
+    Path                = $SourcesLocation
+    UseAltFolderSearch  = $AltFolderSearch.IsPresent
 }
 if ($PSBoundParameters.ContainsKey("ExcludeFolders")) {
     $GetAllFoldersSplat.Add("ExcludeFolders", $ExcludeFolders)
