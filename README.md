@@ -92,10 +92,10 @@ Running the script without anything other than the mandatory parameters will do 
 
 - You can execute this script remotely from a site server. It makes zero changes to your ConfigMgr site. It's purely for reporting.
 - The returned object by the script is an array of PSObjects.
-- `-SourcesLocation` can be a UNC or local path and works around the 260 MAX_PATH limit.
+- `-SourcesLocation` can be a UNC or local path and works around the 260 MAX_PATH limit. Use `-ExcludeFolders` parameter which takes an array of absolute paths of folders you wish to exclude under `-SourcesLocation`.
 - `-Threads` to control how many threads are used for concurrent processing.
 - Optionally exports PowerShell objects to file of either all your ConfigMgr content objects or the result. You can later reimport these using `Import-Clixml`.
-- Optionally create a Excel.
+- Optionally create an Excel report.
 - Optionally filter the ConfigMgr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Optionally create a log file.
 - Optionally produce an Excel report, with thanks to [ImportExcel](https://github.com/dfinke/ImportExcel). See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
@@ -103,7 +103,7 @@ Running the script without anything other than the mandatory parameters will do 
 ## Examples
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteServer "server.contoso.com" -Log -ExportReturnObject -ExcelReport -Threads 2
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteServer "server.contoso.com" -Log -ExportReturnObject -ExcelReport -ExcludeFolders "\\server\folder\somechildfolder1", "\\server\folder\somechildfolder2" -Threads 2
 ```
 
 - Gather all content objects relevant to site code `XYZ`.
