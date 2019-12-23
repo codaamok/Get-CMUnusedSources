@@ -1450,13 +1450,44 @@ $AllFolders | ForEach-Object -Begin {
     Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
     if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
 
-    # Calculate total MB used for each "Not used" folder
-    # This is wasteful if -ExcelReport is not specified, but I really wanted $SummaryNotUsedFolders total in end result stats
-    $NotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
+    # Get all "Invalid paths" and create a blank PSCustomObject if null for a clean worksheet in case -ExcelReport is specified 
+    $ReportInvalidPaths = $AllContentObjects.Where( { $_.SourcePathFlag -eq 3 -And -not [string]::IsNullOrEmpty($_.SourcePath) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths
+    if ($ReportInvalidPaths.count -eq 0) {
+        $ReportInvalidPaths = [PSCustomObject]@{
+            ContentType     = $null
+            UniqueID        = $null
+            Name            = $null
+            IsRetired       = $null
+            SourcePath      = $null
+            SourcePathFlag  = $null
+        }
+    }
 
+    # Get all content objects excluding AllPaths property and create a blank PSCustomObject if null for a clean worksheet in case -ExcelReport is specified 
+    $ReportAllContentObjects = $AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths
+    if ($ReportAllContentObjects.count -eq 0) {
+        $ReportAllContentObjects = [PSCustomObject]@{
+            ContentType     = $null
+            UniqueID        = $null
+            Name            = $null
+            IsRetired       = $null
+            SourcePath      = $null
+            SourcePathFlag  = $null
+        }
+    }
+
+    Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
+    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
+
+
+    # Get all "Not used" folders and create a blank PSCustomObject if null for a clean worksheet in case -ExcelReport is specified
+    $ReportNotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
     # Calculate total MB used on size unused by ConfigMgr
-    if ($NotUsedFolders.count -eq 0) {
-        # PSCustomObject created so that when $NotUsedFolders is blank, we get a worksheet in the Excel report with columns albeit with values equal to 0
+    if ($ReportNotUsedFolders.count -eq 0) {
+        $ReportNotUsedFolders = [PSCustomObject]@{
+            Folder  = $null
+            UsedBy  = $null
+        }
         $SummaryNotUsedFolders = [PSCustomObject]@{
             Path            = 0
             Size            = 0
@@ -1466,7 +1497,7 @@ $AllFolders | ForEach-Object -Begin {
         $SummaryNotUsedFoldersMB,$SummaryNotUsedFoldersFileCount,$SummaryNotUsedFoldersDirectoryCount = 0,0,0
     }
     else {
-        $SummaryNotUsedFolders = $NotUsedFolders | Sort-Object Folder | ForEach-Object {
+        $SummaryNotUsedFolders = $ReportNotUsedFolders | Sort-Object Folder | ForEach-Object {
             $current = $_
             if (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
                 # Do nothing
@@ -1475,9 +1506,9 @@ $AllFolders | ForEach-Object -Begin {
                 $previous = $current
                 $current.Folder | Measure-ChildItem -Unit MB -Digits 2
             }
-        }
+        } | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount
         Write-CMLogEntry -Value "Done calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
-        $SummaryNotUsedFoldersMB = [Math]::Round(($SummaryNotUsedFolders | Measure-Object Size -Sum | Select-Object -ExpandProperty Sum), 2)
+        $SummaryNotUsedFoldersMB = [Math]::Round(($SummaryNotUsedFolders | Measure-Object "Size (MB)" -Sum | Select-Object -ExpandProperty Sum), 2)
         $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
         $SummaryNotUsedFoldersDirectoryCount = $SummaryNotUsedFolders | Measure-Object DirectoryCount -Sum | Select-Object -ExpandProperty Sum
     }
@@ -1535,10 +1566,10 @@ $AllFolders | ForEach-Object -Begin {
             if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -PercentComplete 100 -ParentId 1 }
             $Excel = Export-Excel -Path ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -InputObject $Result -WorksheetName "Result" -PassThru
             Add-ExcelReportWorksheet -ExlPkg $Excel -Data @{
-                "Summary"               = $SummaryNotUsedFolders | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount
-                "Not used folders"      = $NotUsedFolders
-                "Invalid paths"         = $AllContentObjects.Where( { ($_.SourcePathFlag -eq 3) -And ([string]::IsNullOrEmpty($_.SourcePath) -eq $false) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths
-                "All content objects"   = $AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths
+                "Summary"               = $SummaryNotUsedFolders
+                "Not used folders"      = $ReportNotUsedFolders
+                "Invalid paths"         = $ReportInvalidPaths
+                "All content objects"   = $ReportAllContentObjects
             }
             Close-ExcelPackage -ExcelPackage $Excel
             if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -Completed -ParentId 1 }
@@ -1556,7 +1587,7 @@ $AllFolders | ForEach-Object -Begin {
     Write-CMLogEntry -Value ("Content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders at {0}: {1}" -f $SourcesLocation, $AllFolders.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders where access denied: {0}" -f $Result.Where( { $_.UsedBy -like "Access denied*" } ).count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders unused: {0}" -f $NotUsedFolders.count) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Folders unused: {0}" -f $ReportNotUsedFolders.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): {2} MB" -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", "), $SummaryNotUsedFoldersMB) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Runtime: {0}" -f $StopTime.ToString()) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value "Finished" -Severity 1 -Component "Exit"
