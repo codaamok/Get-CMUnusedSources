@@ -757,7 +757,7 @@ Function Get-AllFolders {
     if ($UseAltFolderSearch -eq $true -or $PSBoundParameters.ContainsKey("ExcludeFolders")) {
         # The function handles if $ExcludeFolders is null
         # Performance is better when using this style of folder recursion with exclusions / filtering right with Where-Object
-        [System.Collections.Generic.List[String]]$Folders = Start-AltFolderSearch -FolderName $Path -ExcludeFolders $ExcludeFolders
+        [System.Collections.Generic.List[String]]$Folders = Get-AllFoldersAlt -FolderName $Path -ExcludeFolders $ExcludeFolders
     }
     else {
         try {
@@ -800,7 +800,7 @@ Function Get-AllFolders {
     $Folders | Sort-Object
 
 }
-Function Start-AltFolderSearch {
+Function Get-AllFoldersAlt {
     <#
     .SYNOPSIS
         Get all folders under $FolderName, but not recursively.
@@ -829,7 +829,7 @@ Function Start-AltFolderSearch {
     }
     
     ForEach ($Folder in $Folders) {
-        Start-AltFolderSearch -FolderName $Folder -ExcludeFolders $ExcludeFolders
+        Get-AllFoldersAlt -FolderName $Folder -ExcludeFolders $ExcludeFolders
     }
 
     return $Folders
