@@ -752,23 +752,16 @@ Function Get-AllFolders {
     $ExcludeFolders = Convert-UNCPath -Path $ExcludeFolders | ForEach-Object {
         [Regex]::Escape($_)
     }
-    
+
     # Recursively get all folders
-    if ($UseAltFolderSearch -eq $true) {
+    if ($UseAltFolderSearch -eq $true -or $PSBoundParameters.ContainsKey("ExcludeFolders")) {
+        # The function handles if $ExcludeFolders is null
+        # Performance is better when using this style of folder recursion with exclusions / filtering right with Where-Object
         [System.Collections.Generic.List[String]]$Folders = Start-AltFolderSearch -FolderName $Path -ExcludeFolders $ExcludeFolders
     }
     else {
         try {
-            if ($PSBoundParameters.ContainsKey("ExcludeFolders")) {
-                [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName | ForEach-Object {
-                    if (-not($_ -match [String]::Join("|", $ExcludeFolders))) {
-                        $_
-                    }
-                }
-            }
-            else {
-                [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName
-            }
+            [System.Collections.Generic.List[String]]$Folders = Get-ChildItem -LiteralPath $Path -Directory -Recurse -ErrorVariable GetChildItemErr | Select-Object -ExpandProperty FullName
         }
         catch {
             $Message = "Consider using -AltFolderSearch ({0}), quiting..." -f $GetChildItemErr.Message
