@@ -181,6 +181,12 @@ $PSDefaultParameterValues = @{
     "Export-Excel:TableStyle"               = "Medium20"
     "Export-Excel:AutoSize"                 = $true
     "Export-Excel:AutoFilter"               = $true
+    "Export-Excel:ErrorAction"              = "Stop"
+    "Export-Excel:ErrorVariable"            = "ExcelReportErr"
+    "Set-ExcelRange:ErrorAction"            = "Stop"
+    "Set-ExcelRange:ErrorVariable"          = "ExcelReportErr"
+    "Close-ExcelPackage:ErrorAction"        = "Stop"
+    "Close-ExcelPackage:ErrorVariable"      = "ExcelReportErr"
 }
 #endregion
 
@@ -1478,7 +1484,6 @@ $AllFolders | ForEach-Object -Begin {
     Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
     if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
 
-
     # Get all "Not used" folders and create a blank PSCustomObject if null for a clean worksheet in case -ExcelReport is specified
     $ReportNotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
     # Calculate total MB used on size unused by ConfigMgr
@@ -1560,9 +1565,9 @@ $AllFolders | ForEach-Object -Begin {
 
     # Write $Result to Excel using ImportExcel
     if ($ExcelReport.IsPresent -eq $true) {
+        Write-CMLogEntry -Value "Creating Excel report" -Severity 1 -Component "Exit" -WriteHost
+        if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -PercentComplete 100 -ParentId 1 }
         try {
-            Write-CMLogEntry -Value "Creating Excel report" -Severity 1 -Component "Exit" -WriteHost
-            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -PercentComplete 100 -ParentId 1 }
             $Excel = Export-Excel -Path ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -InputObject $Result -WorksheetName "Result" -PassThru
             Add-ExcelReportWorksheet -ExlPkg $Excel -Data @{
                 "Summary"               = $SummaryNotUsedFolders
@@ -1571,12 +1576,12 @@ $AllFolders | ForEach-Object -Begin {
                 "All content objects"   = $ReportAllContentObjects
             }
             Close-ExcelPackage -ExcelPackage $Excel
-            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -Completed -ParentId 1 }
-            Write-CMLogEntry -Value "Done creating Excel report" -Severity 1 -Component "Exit" -WriteHost
         }
         catch {
-            Write-CMLogEntry -Value ("Failed to create Excel report: {0}" -f $error[0]) -Severity 3 -Component "Exit" -WriteHost
+            Write-CMLogEntry -Value ("Failed to create Excel report: {0}" -f $ExcelReportErr.Message) -Severity 3 -Component "Exit" -WriteHost
         }
+        if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -Completed -ParentId 1 }
+        Write-CMLogEntry -Value "Done creating Excel report" -Severity 1 -Component "Exit" -WriteHost
     }
 
     # Stop clock for runtime
