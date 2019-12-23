@@ -777,11 +777,12 @@ Function Get-AllFolders {
         }
     }
 
-    if ([string]::IsNullOrEmpty($Folders) -eq $true) {
-        [System.Collections.Generic.List[String]]$Folders = @($Path)
+    # Add root directory
+    if ($Folders -is [System.Collections.Generic.List[String]] -And $Folders.count -gt 0) {
+        $Folders.Add($Path)
     }
     else {
-        $Folders.Add($Path)
+        $Folders = $Path
     }
 
     # Undo the \\?\ prefix
@@ -817,20 +818,22 @@ Function Start-AltFolderSearch {
         Further testing on different storage systems using SMBv1 this exception was not reproducable.
         Massive thanks to Chris Kibble for coming up with this work around and time to help troubleshoot!
         Called by Get-AllFolders.
-    .OUTPUTS
-        System.Object.Generic.List[String] of folder full names.
     #>
     Param(
         [string]$FolderName,
         [string[]]$ExcludeFolders
     )
 
-    # Annoyingly, Get-ChildItem with forced output to an arry @(Get-ChildItem ...) can return an explicit
-    # $null value for folders with no subfolders, causing the for loop to indefinitely iterate through
-    # working dir when it reaches a null value, so a null check is needed
-    [System.Collections.Generic.List[String]]$Folders = @(Get-ChildItem -LiteralPath $FolderName -Directory | Select-Object -ExpandProperty FullName | Where-Object {
-        ([String]::IsNullOrEmpty($_) -eq $false) -And (-not($_ -match [String]::Join("|", $ExcludeFolders)))
-    })
+    if ($null -eq $ExcludeFolders) {
+        $Folders = Get-ChildItem -LiteralPath $FolderName -Directory | Select-Object -ExpandProperty FullName | Where-Object {
+            -not [String]::IsNullOrEmpty($_)
+        }
+    }
+    else {
+        $Folders = Get-ChildItem -LiteralPath $FolderName -Directory | Select-Object -ExpandProperty FullName | Where-Object {
+            -not [String]::IsNullOrEmpty($_) -And $_ -notmatch [String]::Join("|", $ExcludeFolders)
+        }
+    }
     
     ForEach ($Folder in $Folders) {
         Start-AltFolderSearch -FolderName $Folder -ExcludeFolders $ExcludeFolders
