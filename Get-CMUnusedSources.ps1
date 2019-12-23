@@ -1157,7 +1157,7 @@ Function Add-ExcelReportWorksheet {
                 $LastRow = $ExlPkg.Workbook.Worksheets["Summary"].Dimension.Rows
                 Set-ExcelRange -Range $ExlPkg.Workbook.Worksheets["Summary"].Cells["A1"] -Value "Total:" -HorizontalAlignment "Right" -Bold
                 ForEach ($Letter in @("B","C","D")) {
-                    $Formula = "=SUM({0}3:{1}{2})" -f $Letter, $Letter, $LastRow
+                    $Formula = "=SUM({0}3:{1}{2})" -f $Letter, $Letter, ($LastRow + 1)
                     $Cell = "{0}1" -f $Letter
                     Set-ExcelRange -Range $ExlPkg.Workbook.Worksheets["Summary"].Cells[$Cell] -Formula $Formula
                 }
