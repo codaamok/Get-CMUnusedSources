@@ -179,14 +179,9 @@ $PSDefaultParameterValues = @{
     "Write-CMLogEntry:MaxLogFileSize"       = 2MB
     "Write-CMLogEntry:MaxNumOfRotatedLogs"  = 0
     "Export-Excel:TableStyle"               = "Medium20"
+    "Add-ExcelTable:TableStyle"             = "Medium20"
     "Export-Excel:AutoSize"                 = $true
     "Export-Excel:AutoFilter"               = $true
-    "Export-Excel:ErrorAction"              = "Stop"
-    "Export-Excel:ErrorVariable"            = "ExcelReportErr"
-    "Set-ExcelRange:ErrorAction"            = "Stop"
-    "Set-ExcelRange:ErrorVariable"          = "ExcelReportErr"
-    "Close-ExcelPackage:ErrorAction"        = "Stop"
-    "Close-ExcelPackage:ErrorVariable"      = "ExcelReportErr"
 }
 #endregion
 
@@ -1144,26 +1139,41 @@ Function Set-CMDrive {
 
 }
 
-Function Add-ExcelReportWorksheet {
+Function New-ExcelReport {
+    <#
+    .SYNOPSIS
+        Create the Excel report
+    .DESCRIPTION
+        Using the ImportExcel module create the Excel workbook with the result and several other worksheets creating useful views of the result
+        Called by main body.
+    #>
+    [CmdletBinding()]
     Param(
-        [OfficeOpenXml.ExcelPackage]$ExlPkg,
+        [String]$File,
         [Hashtable]$Data
     )
+    $ExcelPackage = Export-Excel -Path $File -PassThru
     ForEach ($item in $Data.GetEnumerator()) {
-        Export-Excel -ExcelPackage $ExlPkg -WorksheetName $item.Key -InputObject $item.Value -PassThru
-        switch ($item.Key) {
+        $Worksheet = Add-Worksheet -ExcelPackage $ExcelPackage -WorksheetName $item.Key
+        switch -Regex ($item.Key) {
             "Summary" {
-                $ExlPkg.Workbook.Worksheets["Summary"].InsertRow(1,1)
-                $LastRow = $ExlPkg.Workbook.Worksheets["Summary"].Dimension.Rows
-                Set-ExcelRange -Range $ExlPkg.Workbook.Worksheets["Summary"].Cells["A1"] -Value "Total:" -HorizontalAlignment "Right" -Bold
+                $ExcelPackage = Export-Excel -ExcelPackage $ExcelPackage -WorksheetName $Worksheet.Name -InputObject $item.Value -Activate -PassThru
+                [void]$ExcelPackage.Workbook.Worksheets[$Worksheet].InsertRow(1,1)
+                $LastRow = $ExcelPackage.Workbook.Worksheets[$Worksheet].Dimension.Rows
+                Set-ExcelRange -Range $ExcelPackage.Workbook.Worksheets[$Worksheet].Cells["A1"] -Value "Total:" -HorizontalAlignment "Right" -Bold
                 ForEach ($Letter in @("B","C","D")) {
                     $Formula = "=SUM({0}3:{1}{2})" -f $Letter, $Letter, ($LastRow + 1)
                     $Cell = "{0}1" -f $Letter
-                    Set-ExcelRange -Range $ExlPkg.Workbook.Worksheets["Summary"].Cells[$Cell] -Formula $Formula
+                    Set-ExcelRange -Range $ExcelPackage.Workbook.Worksheets[$Worksheet].Cells[$Cell] -Formula $Formula
                 }
+            }
+            default {
+                $ExcelPackage = Export-Excel -ExcelPackage $ExcelPackage -WorksheetName $Worksheet.Name -InputObject $item.Value -PassThru
             }
         }
     }
+    Close-ExcelPackage -ExcelPackage $ExcelPkg -Show
+    Remove-Worksheet -Path $ExcelFile -WorksheetName "Sheet1"
 }
 #endregion
 
@@ -1328,45 +1338,52 @@ $AllFolders | ForEach-Object -Begin {
         }
 
         # Still continue anyway, despite access denied, because we can still determine if it's an exact match or intermediate path of a content object
-
-        # Filtered to exclude SourcePathFlag 3 so we can exclude false positives
-        # e.g. if content objects uses \\server\share\folder1\folder2 and $SourcesLocation is \\server\share\folder1
-        # but SourcePathFlag is 3, this could report \\server\share\folder1 as intermediate where it may not be
-        # Plus, no point iterating over them if we already know that the SourcePath isn't resolvable
-        ForEach ($ContentObject in ($RSAllContentObjects.Where( {$_.SourcePathFlag -ne 3} ))) {
-
-            switch($true) {
-                ([string]::IsNullOrEmpty($ContentObject.SourcePath) -eq $true) {
-                    # Content object source path is empty, no point continuing
-                    break
-                }
-                ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.$RSFolder -eq $env:COMPUTERNAME)) {
-                    # Content object source path is on local file system to the site server
-                    $UsedBy.Add($ContentObject.Name)
-                    break
-                }
-                (($ContentObject.AllPaths.Keys -contains $RSFolder) -eq $true) {
-                    # By default the ContainsKey method ignores case
-                    # A match has been found within the AllPaths property of the content object
-                    $UsedBy.Add($ContentObject.Name)
-                    break
-                }
-                (($ContentObject.AllPaths.Keys -match [Regex]::Escape($RSFolder)).Count -gt 0) {
-                    # If any of the content object paths start with $RSFolder
-                    $IntermediatePath = $true
-                    break
-                }
-                ($ContentObject.AllPaths.Keys.Where{$RSFolder.StartsWith($_, "CurrentCultureIgnoreCase")}.Count -gt 0) {
-                    # If $RSFolder starts wtih any of the content object paths
-                    $IntermediatePath = $true
-                    break
-                }
-                default {
-                    # Folder isn't known to any content objects
-                    $NotUsed = $true
+        
+        # Skip all the checking and just return $NotUsed = $true if there aren't any content objects
+        if ($RSAllContentObjects.count -gt 0) {
+            ForEach ($ContentObject in $RSAllContentObjects) {
+                switch($true) {
+                    ($_.SourcePathFLag -eq 3) {
+                        # Filtered to exclude SourcePathFlag 3 so we can exclude false positives
+                        # e.g. if content objects uses \\server\share\folder1\folder2 and $SourcesLocation is \\server\share\folder1
+                        # but SourcePathFlag is 3, this could report \\server\share\folder1 as intermediate where it may not be
+                        # Plus, no point iterating over them if we already know that the SourcePath isn't resolvable
+                        break
+                    }
+                    ([string]::IsNullOrEmpty($ContentObject.SourcePath) -eq $true) {
+                        # Content object source path is empty, no point continuing
+                        break
+                    }
+                    ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($ContentObject.AllPaths.$RSFolder -eq $env:COMPUTERNAME)) {
+                        # Content object source path is on local file system to the site server
+                        $UsedBy.Add($ContentObject.Name)
+                        break
+                    }
+                    (($ContentObject.AllPaths.Keys -contains $RSFolder) -eq $true) {
+                        # By default the ContainsKey method ignores case
+                        # A match has been found within the AllPaths property of the content object
+                        $UsedBy.Add($ContentObject.Name)
+                        break
+                    }
+                    (($ContentObject.AllPaths.Keys -match [Regex]::Escape($RSFolder)).Count -gt 0) {
+                        # If any of the content object paths start with $RSFolder
+                        $IntermediatePath = $true
+                        break
+                    }
+                    ($ContentObject.AllPaths.Keys.Where{$RSFolder.StartsWith($_, "CurrentCultureIgnoreCase")}.Count -gt 0) {
+                        # If $RSFolder starts wtih any of the content object paths
+                        $IntermediatePath = $true
+                        break
+                    }
+                    default {
+                        # Folder isn't known to any content objects
+                        $NotUsed = $true
+                    }
                 }
             }
-
+        }
+        else {
+            $NotUsed = $true
         }
 
         switch ($true) {
@@ -1455,40 +1472,14 @@ $AllFolders | ForEach-Object -Begin {
     Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
     if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
 
-    # Get all "Invalid paths" and create a blank PSCustomObject if null for a clean worksheet in case -ExcelReport is specified 
-    $ReportInvalidPaths = $AllContentObjects.Where( { $_.SourcePathFlag -eq 3 -And -not [string]::IsNullOrEmpty($_.SourcePath) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths
-    if ($ReportInvalidPaths.count -eq 0) {
-        $ReportInvalidPaths = [PSCustomObject]@{
-            ContentType     = $null
-            UniqueID        = $null
-            Name            = $null
-            IsRetired       = $null
-            SourcePath      = $null
-            SourcePathFlag  = $null
-        }
-    }
-
-    # Get all content objects excluding AllPaths property and create a blank PSCustomObject if null for a clean worksheet in case -ExcelReport is specified 
-    $ReportAllContentObjects = $AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths
-    if ($ReportAllContentObjects.count -eq 0) {
-        $ReportAllContentObjects = [PSCustomObject]@{
-            ContentType     = $null
-            UniqueID        = $null
-            Name            = $null
-            IsRetired       = $null
-            SourcePath      = $null
-            SourcePathFlag  = $null
-        }
-    }
-
-    Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
-    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
+    # Get all "Invalid paths" content objects
+    $InvalidPaths = $AllContentObjects.Where( { $_.SourcePathFlag -eq 3 -And -not [string]::IsNullOrEmpty($_.SourcePath) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths
 
     # Get all "Not used" folders and create a blank PSCustomObject if null for a clean worksheet in case -ExcelReport is specified
-    $ReportNotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
-    # Calculate total MB used on size unused by ConfigMgr
-    if ($ReportNotUsedFolders.count -eq 0) {
-        $ReportNotUsedFolders = [PSCustomObject]@{
+    $NotUsedFolders = $Result.Where( { $_.UsedBy -eq "Not used" } )
+    # Calculate total MB used on size unused by ConfigMgr, used in summary printed at the end and also for Add-ExcelReportWorksheet
+    if ($NotUsedFolders.count -eq 0) {
+        $NotUsedFolders = [PSCustomObject]@{
             Folder  = $null
             UsedBy  = $null
         }
@@ -1501,7 +1492,7 @@ $AllFolders | ForEach-Object -Begin {
         $SummaryNotUsedFoldersMB,$SummaryNotUsedFoldersFileCount,$SummaryNotUsedFoldersDirectoryCount = 0,0,0
     }
     else {
-        $SummaryNotUsedFolders = $ReportNotUsedFolders | Sort-Object Folder | ForEach-Object {
+        $SummaryNotUsedFolders = $NotUsedFolders | Sort-Object Folder | ForEach-Object {
             $current = $_
             if (($previous) -And ($current.Folder.StartsWith($previous.Folder))) {
                 # Do nothing
@@ -1568,17 +1559,40 @@ $AllFolders | ForEach-Object -Begin {
         Write-CMLogEntry -Value "Creating Excel report" -Severity 1 -Component "Exit" -WriteHost
         if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -PercentComplete 100 -ParentId 1 }
         try {
-            $Excel = Export-Excel -Path ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -InputObject $Result -WorksheetName "Result" -PassThru
-            Add-ExcelReportWorksheet -ExlPkg $Excel -Data @{
+            New-ExcelReport -File ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -ErrorAction "Stop" -ErrorVariable NewExcelReportErr -Data @{
+                "Result"                = $Result
                 "Summary"               = $SummaryNotUsedFolders
-                "Not used folders"      = $ReportNotUsedFolders
-                "Invalid paths"         = $ReportInvalidPaths
-                "All content objects"   = $ReportAllContentObjects
+                "Not used folders"      = $NotUsedFolders
+                "Invalid paths"         = if ($InvalidPaths.count -gt 0 -And $null -ne $InvalidPaths) {
+                    $InvalidPaths
+                } 
+                else {
+                    [PSCustomObject]@{
+                        ContentType     = $null
+                        UniqueID        = $null
+                        Name            = $null
+                        IsRetired       = $null
+                        SourcePath      = $null
+                        SourcePathFlag  = $null
+                    }
+                }
+                "Content objects"   = if ($AllContentObjects.count -gt 0 -And $null -ne $AllContentObjects) {
+                    $AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths
+                }
+                else {
+                    [PSCustomObject]@{
+                        ContentType     = $null
+                        UniqueID        = $null
+                        Name            = $null
+                        IsRetired       = $null
+                        SourcePath      = $null
+                        SourcePathFlag  = $null
+                    }
+                }
             }
-            Close-ExcelPackage -ExcelPackage $Excel
         }
         catch {
-            Write-CMLogEntry -Value ("Failed to create Excel report: {0}" -f $ExcelReportErr.Message) -Severity 3 -Component "Exit" -WriteHost
+            Write-CMLogEntry -Value ("Failed to create Excel report: {0}" -f $NewExcelReportErr.Message) -Severity 3 -Component "Exit" -WriteHost
         }
         if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -Completed -ParentId 1 }
         Write-CMLogEntry -Value "Done creating Excel report" -Severity 1 -Component "Exit" -WriteHost
@@ -1591,7 +1605,7 @@ $AllFolders | ForEach-Object -Begin {
     Write-CMLogEntry -Value ("Content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders at {0}: {1}" -f $SourcesLocation, $AllFolders.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Folders where access denied: {0}" -f $Result.Where( { $_.UsedBy -like "Access denied*" } ).count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders unused: {0}" -f $ReportNotUsedFolders.count) -Severity 1 -Component "Exit" -WriteHost
+    Write-CMLogEntry -Value ("Folders unused: {0}" -f $NotUsedFolders.count) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): {2} MB" -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", "), $SummaryNotUsedFoldersMB) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value ("Runtime: {0}" -f $StopTime.ToString()) -Severity 1 -Component "Exit" -WriteHost
     Write-CMLogEntry -Value "Finished" -Severity 1 -Component "Exit"

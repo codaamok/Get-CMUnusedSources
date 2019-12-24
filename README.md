@@ -218,7 +218,7 @@ Folder                                    UsedBy
 
 ## Validating the results
 
-You could verify if a folder structure is used or not by checking out the results of the script. The Excel report has a tab "All content objects" where you can verify if part or all of the path you're curious about is used.
+You could verify if a folder structure is used or not by checking out the results of the script. The Excel report has a tab "Content objects" where you can verify if part or all of the path you're curious about is used.
 
 You can easily achieve this verification with PowerShell:
 
@@ -333,7 +333,7 @@ F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
 
 See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
 
-You'll see five tabs: `Result`, `Summary`, `Not used folders`, `All content objects` and `Invalid paths`.
+You'll see five tabs: `Result`, `Summary`, `Not used folders`, `Content objects` and `Invalid paths`.
 
 ### Result
 
@@ -351,13 +351,13 @@ This ensures the "Totals" column produces an accurate measure of total capacity,
 
 All folders that were determined not used under the given path by the searched content objects.
 
-### Content objects with invalid path
+### Invalid paths
 
-All content objects that have a source path which are not accessible from the computer that ran this script.
+Content objects that have a source path which are not accessible from the computer that ran this script.
 
 A common result you'll see here, if you run the script remote from a site server, is things like USMT packages that are traditionally stored as a Package with a local path rather than UNC path.
 
-### All content objects
+### Content objects
 
 All searched ConfigMgr content objects. For example, if you specified `-Drivers` and `-DriverPackages` then it would only show you Driver and DriverPackage content object types, because that's all that was gathered.
 
