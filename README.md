@@ -182,23 +182,27 @@ The `UsedBy` property can have one or more of the following values:
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications
-Starting
-Gathering folders: \\fileserver\Applications$
-Number of gathered folders: 41
-Gathering content objects: Application
-Number of gathered content objects: 16
-Determining unused folders, using 4 threads
-Adding jobs to queue
-Waiting for jobs to complete
-Done determining unused folders
-Calculating used disk space by unused folders
-Done calculating used disk space by unused folders
-Content objects: 16
-Folders at \\fileserver\Applications$: 41
-Folders where access denied: 2
-Folders unused: 13
-Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 5.86 MB
-Runtime: 00:00:14.2988987
+[ 00:18:14 | 00:00:00 ] - Starting
+[ 00:18:14 | 00:00:00 ] - Gathering folders: \\fileserver\Applications$
+[ 00:18:14 | 00:00:00 ]   - Done, number of gathered folders: 216
+[ 00:18:14 | 00:00:00 ] - Gathering content objects: Application
+[ 00:18:19 | 00:00:05 ]   - Done, number of gathered content objects: 74
+[ 00:18:19 | 00:00:05 ] - Determining unused folders, using 4 threads
+[ 00:18:19 | 00:00:05 ]   - Adding jobs to queue
+[ 00:18:23 | 00:00:09 ]       - Done, waiting for jobs to complete
+[ 00:18:31 | 00:00:17 ]   - Done determining unused folders
+[ 00:18:32 | 00:00:17 ] - Calculating used disk space by unused folders
+[ 00:18:32 | 00:00:17 ]   - Done calculating used disk space by unused folders
+[ 00:18:32 | 00:00:17 ] - ---------------------------------------------------------------------------
+[ 00:18:32 | 00:00:17 ] - Folders in \\fileserver\Applications$: 216
+[ 00:18:32 | 00:00:17 ] - Folders where access denied: 2
+[ 00:18:32 | 00:00:17 ] - Folders unused: 64
+[ 00:18:32 | 00:00:17 ] - Potential disk space savings in "\\fileserver\Applications$": 1661.43 MB
+[ 00:18:32 | 00:00:17 ] - Content objects processed: Application
+[ 00:18:32 | 00:00:17 ] - Content objects: 74
+[ 00:18:32 | 00:00:17 ] - Runtime: 00:00:17.7590537
+[ 00:18:32 | 00:00:17 ] - ---------------------------------------------------------------------------
+[ 00:18:32 | 00:00:17 ] - Finished
 
 PS C:\> $result | Select -First 10
 
@@ -224,18 +228,27 @@ You can easily achieve this verification with PowerShell:
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications
-Starting
-Gathering folders: \\fileserver\Applications$
-Number of folders: 40
-Gathering content objects: Application
-Number of content objects: 16
-Determining unused folders, using 2 threads
-Content objects: 16
-Folders at \\fileserver\Applications$: 40
-Folders where access denied: 1
-Folders unused: 11
-Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
-Runtime: 00:00:25.2392081
+[ 00:18:14 | 00:00:00 ] - Starting
+[ 00:18:14 | 00:00:00 ] - Gathering folders: \\fileserver\Applications$
+[ 00:18:14 | 00:00:00 ]   - Done, number of gathered folders: 216
+[ 00:18:14 | 00:00:00 ] - Gathering content objects: Application
+[ 00:18:19 | 00:00:05 ]   - Done, number of gathered content objects: 74
+[ 00:18:19 | 00:00:05 ] - Determining unused folders, using 4 threads
+[ 00:18:19 | 00:00:05 ]   - Adding jobs to queue
+[ 00:18:23 | 00:00:09 ]       - Done, waiting for jobs to complete
+[ 00:18:31 | 00:00:17 ]   - Done determining unused folders
+[ 00:18:32 | 00:00:17 ] - Calculating used disk space by unused folders
+[ 00:18:32 | 00:00:17 ]   - Done calculating used disk space by unused folders
+[ 00:18:32 | 00:00:17 ] - ---------------------------------------------------------------------------
+[ 00:18:32 | 00:00:17 ] - Folders in \\fileserver\Applications$: 216
+[ 00:18:32 | 00:00:17 ] - Folders where access denied: 2
+[ 00:18:32 | 00:00:17 ] - Folders unused: 64
+[ 00:18:32 | 00:00:17 ] - Potential disk space savings in "\\fileserver\Applications$": 1661.43 MB
+[ 00:18:32 | 00:00:17 ] - Content objects processed: Application
+[ 00:18:32 | 00:00:17 ] - Content objects: 74
+[ 00:18:32 | 00:00:17 ] - Runtime: 00:00:17.7590537
+[ 00:18:32 | 00:00:17 ] - ---------------------------------------------------------------------------
+[ 00:18:32 | 00:00:17 ] - Finished
 
 PS C:\> $result | Where-Object { $_.Folder -like "\\fileserver\Applications$*" }
 
@@ -271,6 +284,7 @@ Below is an example of how to generate the result into XML and import it in to a
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
+...
 PS C:\> $cmcontentobjs = Import-Clixml -Path ".\Get-CMUnusedSources.ps1_2019-07-07_16-48-52_cmobjects.xml"
 PS C:\> $cmcontentobjs | Select -First 2
 
@@ -587,6 +601,6 @@ Big thanks to folks in [Windows Admins slack](https://slofile.com/slack/winadmin
 
 - Cody Mathis ([@codymathis123](https://github.com/CodyMathis123))
 - Chris Kibble ([@ChrisKibble](https://github.com/ChrisKibble))
-- Chris Dent ([@idented-automation](https://github.com/indented-automation))
+- Chris Dent ([@indented-automation](https://github.com/indented-automation))
 - Kevin Crouch ([@PsychoData](https://github.com/PsychoData))
 - Patrick Seymour ([@pseymour](https://github.com/pseymour))

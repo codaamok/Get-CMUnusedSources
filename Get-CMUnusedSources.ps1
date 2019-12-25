@@ -170,6 +170,7 @@ TODO:
 
 #region Define PSDefaultParameterValues and other variables
 $JobId = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
+$StartTime = Get-Date
 
 $PSDefaultParameterValues = @{
     "Write-CMLogEntry:Bias"                 = (Get-CimInstance -ClassName Win32_TimeZone | Select-Object -ExpandProperty Bias)
@@ -178,6 +179,7 @@ $PSDefaultParameterValues = @{
     "Write-CMLogEntry:Enable"               = $Log.IsPresent
     "Write-CMLogEntry:MaxLogFileSize"       = 2MB
     "Write-CMLogEntry:MaxNumOfRotatedLogs"  = 0
+    "Write-ScreenInfo:ScriptStart"          = $StartTime
     "Export-Excel:TableStyle"               = "Medium20"
     "Add-ExcelTable:TableStyle"             = "Medium20"
     "Export-Excel:AutoSize"                 = $true
@@ -225,14 +227,8 @@ Function Write-CMLogEntry {
         [int32]$MaxNumOfRotatedLogs = 0,
         [parameter(Mandatory = $true, HelpMessage = 'A switch that enables the use of this function.')]
         [ValidateNotNullOrEmpty()]
-        [switch]$Enable,
-        [switch]$WriteHost
+        [switch]$Enable
     )
-
-    # Runs this regardless of $Enable value
-    if ($WriteHost.IsPresent -eq $true) {
-        Write-Host $Value
-    }
 
     if ($Enable.IsPresent -eq $true) {
         # Determine log file location
@@ -312,6 +308,53 @@ Function Write-CMLogEntry {
         }
         catch [System.Exception] {
             Write-Warning -Message ("Unable to append log entry to {0} file. Error message: {1}" -f $FileName, $_.Exception.Message)
+        }
+    }
+}
+
+Function Write-ScreenInfo {
+    [CmdletBinding()]
+    <#
+    .SYNOPSIS
+        Inspired by PSLog in the AutomatedLab module
+        https://github.com/AutomatedLab/AutomatedLab/blob/c01e2458e38811ccc4b2c58e3f958d666c39d9b9/PSLog/PSLog.psm1
+    #>
+    Param(
+        [Parameter(Mandatory = $true, Position = 0)]
+        [string[]]$Message,
+        [Parameter(Mandatory = $true)]
+        [datetime]$ScriptStart,
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("Error", "Warning", "Info", "Verbose", "Debug")]
+        [string]$Type = "Info",
+        [Parameter(Mandatory = $false)]
+        [int32]$Indent = 0
+    )
+
+    $Date = Get-Date
+    $TimeString = "{0:d2}:{1:d2}:{2:d2}" -f $Date.Hour, $Date.Minute, $Date.Second
+    $TimeDelta = $Date - $ScriptStart
+    $TimeDeltaString = "{0:d2}:{1:d2}:{2:d2}" -f $TimeDelta.Hours, $TimeDelta.Minutes, $TimeDelta.Seconds
+
+    ForEach ($Msg in $Message) {
+        $Msg = ("- " + $Msg).PadLeft(($Msg.Length) + ($Indent * 4), " ")
+        $string = "[ {0} | {1} ] {2}" -f $TimeString, $TimeDeltaString, $Msg
+        switch ($Type) {
+            "Error" {
+                Write-Host $string -ForegroundColor Red
+            }
+            "Warning" {
+                Write-Host $string -ForegroundColor Yellow
+            }
+            "Info" {
+                Write-Host $string
+            }
+            "Debug" {
+                if ($DebugPreference -eq "Continue") { Write-Host $string -ForegroundColor Cyan }
+            }
+            "Verbose" {
+                if ($VerbosePreference -eq "Continue") { Write-Host $string -ForegroundColor Cyan }
+            }
         }
     }
 }
@@ -1177,10 +1220,9 @@ Function New-ExcelReport {
 }
 #endregion
 
-Write-CMLogEntry -Value "Starting" -Severity 1 -Component "Initilisation" -WriteHost
-
-# To calculate total runtime
-$StartTime = Get-Date
+$Message = "Starting"
+Write-ScreenInfo -Message $Message
+Write-CMLogEntry -Value $Message -Severity 1 -Component "Initilisation"
 
 # Write all parameters passed to script to log
 ForEach($item in $PSBoundParameters.GetEnumerator()) {
@@ -1193,27 +1235,33 @@ try {
         # Using a tmp variable because can't modify $SiteCode to fall outside of the ValidatePattern() attribute defined in the script's parameter block
         $tmp = Get-CimInstance -ComputerName $SiteServer -ClassName SMS_ProviderLocation -Namespace "ROOT\SMS" | Select-Object -ExpandProperty SiteCode
         if ($tmp.count -gt 1) {
-            Write-CMLogEntry -Value ("Found multiple site codes: {0}" -f ($tmp -join ", ")) -Severity 1 -Component "Initilisation" -WriteHost
-            throw
+            $Message = "Found multiple site codes: {0}" -f ($tmp -join ", ")
+            Write-ScreenInfo -Message $Message -Type "Error"
+            Write-CMLogEntry -Value $Message -Severity 3 -Component "Initilisation"
+            return
         }
         else {
             # Reasonable assurance now the value confines to what's defined in ValidatePattern() attribute, so go ahead and reassign
             $SiteCode = $tmp
         }
-        Write-CMLogEntry -Value ("Using site code: {0}" -f $SiteCode) -Severity 1 -Component "Initilisation" -WriteHost
+        $Message = "Using site code: {0}" -f $SiteCode
+        Write-ScreenInfo -Message $Message
+        Write-CMLogEntry -Value $Message -Severity 1 -Component "Initilisation"
     }
 }
 catch {
     $Message = "Could not determine site code, please provide it using the -SiteCode parameter, quiting"
-    Write-CMLogEntry -Value $Message -Severity 2 -Component "Initilisation"
-    throw $Message
+    Write-ScreenInfo -Message $Message -Type "Error"
+    Write-CMLogEntry -Value $Message -Severity 3 -Component "Initilisation"
+    return
 }
 
 # If user has given local path for $SourcesLocation, need to ensure we don't produce false positives where a similar folder structure exists on the remote machine and site server. e.g. packages let you specify local path on site server
 if ((([System.Uri]$SourcesLocation).IsUnc -eq $false) -And ($env:COMPUTERNAME -ne $SiteServer)) {
     $Message = "Won't be able to determine unused folders with given local path while running remotely from site server, quitting"
-    Write-CMLogEntry -Value $Message -Severity 2 -Component "Initilisation"
-    throw $Message
+    Write-ScreenInfo -Message $Message -Type "Error"
+    Write-CMLogEntry -Value $Message -Severity 3 -Component "Initilisation"
+    return
 }
 
 # Import ImportExcel module report if -ExcelReport is present
@@ -1223,14 +1271,16 @@ if ($ExcelReport.IsPresent -eq $true) {
     }
     catch {
         $Message = "Unable to import ImportExcel module: {0}" -f $error[0].Exception.Message
+        Write-ScreenInfo -Message $Message -Type "Error"
         Write-CMLogEntry -Value $Message -Severity 3 -Component "Initialisation"
-        throw $Message
+        return
     }
     [version]$moduleVersion = (Get-Module ImportExcel | Sort-Object Version -Descending | Select-Object -ExpandProperty Version)[0]
     if ($moduleVersion -lt [version]"7.0.0") {
         $Message = "ImportExcel version is too old ({0}).  Requires 7.0.0+." -f $moduleVersion.ToString()
+        Write-ScreenInfo -Message $message -Type "Error"
         Write-CMLogEntry -Value $Message -Severity 3 -Component "Initialisation"
-        throw $Message
+        return
     }
 }
 
@@ -1277,8 +1327,10 @@ $SiteServer = $FQDN.Split(".")[0]
 
 # Gather folders
 
-Write-CMLogEntry -Value ("Gathering folders: {0}" -f $SourcesLocation) -Severity 1 -Component "GatherFolders" -WriteHost
-if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status ("Gathering all folders at: {0}" -f $SourcesLocation) }
+$Message = "Gathering folders: {0}" -f $SourcesLocation
+Write-ScreenInfo -Message $Message
+Write-CMLogEntry -Value $Message -Severity 1 -Component "GatherFolders"
+if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 0 -Status $Message }
 $GetAllFoldersSplat = @{
     Path                = $SourcesLocation
     UseAltFolderSearch  = $AltFolderSearch.IsPresent
@@ -1287,24 +1339,32 @@ if ($PSBoundParameters.ContainsKey("ExcludeFolders")) {
     $GetAllFoldersSplat.Add("ExcludeFolders", $ExcludeFolders)
 }
 $AllFolders = Get-AllFolders @GetAllFoldersSplat
-Write-CMLogEntry -Value ("Number of gathered folders: {0}" -f $AllFolders.count) -Severity 1 -Component "GatherFolders" -WriteHost
+$Message = "Done, number of gathered folders: {0}" -f $AllFolders.count
+Write-ScreenInfo -Message $Message -Indent 1
+Write-CMLogEntry -Value $Message -Severity 1 -Component "GatherFolders"
 
 # Gather content objects
 
 $OriginalPath = Get-Location | Select-Object -ExpandProperty Path
 Set-CMDrive -SiteCode $SiteCode -Server $SiteServer -Path $OriginalPath
 
-Write-CMLogEntry -Value ("Gathering content objects: {0}" -f ($Commands -replace "Get-CM" -join ", ")) -Severity 1 -Component "GatherContentObjects" -WriteHost
-if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status ("Gathering CM content objects: {0}" -f ($Commands -replace "Get-CM" -join ", ")) }
+$Message = "Gathering content objects: {0}" -f ($Commands -replace "Get-CM" -join ", ")
+Write-ScreenInfo -Message $Message
+Write-CMLogEntry -Value $Message -Severity 1 -Component "GatherContentObjects"
+if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 33 -Status $Message }
 $AllContentObjects = Get-CMContent -Commands $Commands -SiteServer $SiteServer -SiteCode $SiteCode
-Write-CMLogEntry -Value ("Number of gathered content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "GatherContentObjects" -WriteHost
+$Message = "Done, number of gathered content objects: {0}" -f $AllContentObjects.count
+Write-ScreenInfo -Message $Message -Indent 1
+Write-CMLogEntry -Value $Message -Severity 1 -Component "GatherContentObjects"
 
 Set-Location $OriginalPath
 
 $AllFolders | ForEach-Object -Begin {
 
-    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status "Determining unused folders" }
-    Write-CMLogEntry -Value ("Determining unused folders, using {0} threads" -f $Threads) -Severity 1 -Component "Processing" -WriteHost
+    $Message = "Determining unused folders, using {0} threads" -f $Threads
+    Write-ScreenInfo -Message $Message
+    Write-CMLogEntry -Value $Message -Severity 1 -Component "Processing"
+    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 66 -Status $Message }
     
     # Make Test-FileSystemAccess function available to all runspaces
     $Definition = Get-Content Function:\Test-FileSystemAccess -ErrorAction Stop
@@ -1417,7 +1477,9 @@ $AllFolders | ForEach-Object -Begin {
         }
     }
 
-    Write-CMLogEntry -Value "Adding jobs to queue" -Severity 1 -Component "Processing" -WriteHost
+    $Message = "Adding jobs to queue"
+    Write-ScreenInfo -Message $Message -Indent 1
+    Write-CMLogEntry -Value $Message -Severity 1 -Component "Processing"
 
 } -Process {
 
@@ -1439,7 +1501,9 @@ $AllFolders | ForEach-Object -Begin {
     
 } -End {
     
-    Write-CMLogEntry -Value "Waiting for jobs to complete" -Severity 1 -Component "Processing" -WriteHost
+    $Message = "Done, waiting for jobs to complete"
+    Write-ScreenInfo -Message $Message -Indent 2
+    Write-CMLogEntry -Value $Message -Severity 1 -Component "Processing"
 
     [System.Collections.Generic.List[Object]]$Result = @()
 
@@ -1463,14 +1527,18 @@ $AllFolders | ForEach-Object -Begin {
     # Clean up runspace pool
     $RSPool.Dispose()
 
-    Write-CMLogEntry -Value "Done determining unused folders" -Severity 1 -Component "Processing" -WriteHost
+    $Message = "Done determining unused folders"
+    Write-ScreenInfo -Message $Message -Indent 1
+    Write-CMLogEntry -Value $Message -Severity 1 -Component "Processing"
 
     # Update Write-Progress
     if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Evaluating folders" -Completed -ParentId 1 }
     if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 1 -Activity "Running Get-CMUnusedSources" -PercentComplete 100 -Status "Finishing up" }
 
-    Write-CMLogEntry -Value "Calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
-    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Calculating used disk space by unused folders" -PercentComplete 0 -ParentId 1 }
+    $Message = "Calculating used disk space by unused folders"
+    Write-ScreenInfo -Message $Message
+    Write-CMLogEntry -Value $Message -Severity 1 -Component "Exit"
+    if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 0 -ParentId 1 }
 
     # Get all "Invalid paths" content objects
     $InvalidPaths = $AllContentObjects.Where( { $_.SourcePathFlag -eq 3 -And -not [string]::IsNullOrEmpty($_.SourcePath) } ) | Select-Object * -ExcludeProperty SourcePathFlag,AllPaths
@@ -1502,11 +1570,15 @@ $AllFolders | ForEach-Object -Begin {
                 $current.Folder | Measure-ChildItem -Unit MB -Digits 2
             }
         } | Select-Object Path, @{Label="Size (MB)"; Expression={$_.Size}}, FileCount, DirectoryCount
-        Write-CMLogEntry -Value "Done calculating used disk space by unused folders" -Severity 1 -Component "Exit" -WriteHost
+        
         $SummaryNotUsedFoldersMB = [Math]::Round(($SummaryNotUsedFolders | Measure-Object "Size (MB)" -Sum | Select-Object -ExpandProperty Sum), 2)
         $SummaryNotUsedFoldersFileCount = $SummaryNotUsedFolders | Measure-Object FileCount -Sum | Select-Object -ExpandProperty Sum
         $SummaryNotUsedFoldersDirectoryCount = $SummaryNotUsedFolders | Measure-Object DirectoryCount -Sum | Select-Object -ExpandProperty Sum
     }
+
+    $Message = "Done calculating used disk space by unused folders"
+    Write-ScreenInfo -Message $Message -Indent 1
+    Write-CMLogEntry -Value $Message -Severity 1 -Component "Exit"
 
     # Write $Result to log file
     # I know Write-CMLogEntry has Enabled parameter but having it here too just makes sense - to save the gazillion of loops for something that may be disabled anyway
@@ -1514,7 +1586,7 @@ $AllFolders | ForEach-Object -Begin {
     if ($Log.IsPresent -eq $true) {
         $Message = "Writing result to log file"
         if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 25 -ParentId 1 }
-        Write-CMLogEntry -Value $Message -Severity 1 -Component "Processing" -WriteHost
+        Write-CMLogEntry -Value $Message -Severity 1 -Component "Processing"
         ForEach ($item in $Result) {
             switch -regex ($item.UsedBy) {
                 "Access denied" {
@@ -1531,33 +1603,47 @@ $AllFolders | ForEach-Object -Begin {
     # Export $Result to file
     if ($ExportReturnObject.IsPresent -eq $true) {
         try {
-            Write-CMLogEntry -Value "Exporting PowerShell return object" -Severity 1 -Component "Exit" -WriteHost
-            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell return object" -PercentComplete 50 -ParentId 1 }
+            $Message = "Exporting PowerShell return object"
+            Write-ScreenInfo -Message $Message
+            Write-CMLogEntry -Value $Message -Severity 1 -Component "Exit"
+            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 50 -ParentId 1 }
             Export-Clixml -LiteralPath (($PSCommandPath | Split-Path -Parent) + "\" + ($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + "_result.xml") -InputObject $Result
-            Write-CMLogEntry -Value "Done exporting PowerShell return object" -Severity 1 -Component "Exit" -WriteHost
+            $Message = "Done exporting PowerShell return object"
+            Write-ScreenInfo -Message $Message -Indent 1
+            Write-CMLogEntry -Value $Message -Severity 1 -Component "Exit"
         }
         catch {
-            Write-CMLogEntry -Value ("Failed to export PowerShell object: {0}" -f $error[0].Exception.Message) -Severity 3 -Component "Exit" -WriteHost
+            $Message = "Failed to export PowerShell object: {0}" -f $error[0].Exception.Message
+            Write-ScreenInfo -Message $Message -Type "Error" -Indent 1
+            Write-CMLogEntry -Value $Message -Severity 3 -Component "Exit"
         }
     }
 
     # Export $AllContentObjects to file
     if ($ExportCMContentObjects.IsPresent -eq $true) {
         try {
-            Write-CMLogEntry -Value "Exporting PowerShell ConfigMgr content objects object" -Severity 1 -Component "Exit" -WriteHost
-            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Exporting PowerShell ConfigMgr content objects object" -PercentComplete 75 -ParentId 1 }
+            $Message = "Exporting PowerShell ConfigMgr content objects object"
+            Write-ScreenInfo -Message $Message
+            Write-CMLogEntry -Value $Message -Severity 1 -Component "Exit"
+            if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 75 -ParentId 1 }
             Export-Clixml -LiteralPath (($PSCommandPath | Split-Path -Parent) + "\" + ($PSCommandPath | Split-Path -Leaf) + "_" + $JobId + "_cmobjects.xml") -InputObject $AllContentObjects
-            Write-CMLogEntry -Value "Done exporting PowerShell ConfigMgr content objects object" -Severity 1 -Component "Exit" -WriteHost
+            $Message = "Done exporting PowerShell ConfigMgr content objects object"
+            Write-ScreenInfo -Message $Message -Indent 1
+            Write-CMLogEntry -Value $Message -Severity 1 -Component "Exit"
         }
         catch {
-            Write-CMLogEntry -Value ("Failed to export PowerShell object: {0}" -f $error[0].Exception.Message) -Severity 3 -Component "Exit" -WriteHost
+            $Message = "Failed to export PowerShell object: {0}" -f $error[0].Exception.Message
+            Write-ScreenInfo -Message $Message -Indent 1
+            Write-CMLogEntry -Value $Message -Severity 3 -Component "Exit"
         }
     }
 
     # Write $Result to Excel using ImportExcel
     if ($ExcelReport.IsPresent -eq $true) {
-        Write-CMLogEntry -Value "Creating Excel report" -Severity 1 -Component "Exit" -WriteHost
-        if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -PercentComplete 100 -ParentId 1 }
+        $Message = "Creating Excel report"
+        Write-ScreenInfo -Message $Message
+        Write-CMLogEntry -Value $Message -Severity 1 -Component "Exit"
+        if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 100 -ParentId 1 }
         try {
             New-ExcelReport -File ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -ErrorAction "Stop" -ErrorVariable NewExcelReportErr -Data @{
                 "Result"                = $Result
@@ -1592,23 +1678,38 @@ $AllFolders | ForEach-Object -Begin {
             }
         }
         catch {
-            Write-CMLogEntry -Value ("Failed to create Excel report: {0}" -f $NewExcelReportErr.Message) -Severity 3 -Component "Exit" -WriteHost
+            $Message = "Failed to create Excel report: {0}" -f $NewExcelReportErr.Message
+            Write-ScreenInfo -Message $Message -Type "Error" -Indent 1
+            Write-CMLogEntry -Value $Message -Severity 3 -Component "Exit"
         }
-        if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity "Creating Excel report" -Completed -ParentId 1 }
-        Write-CMLogEntry -Value "Done creating Excel report" -Severity 1 -Component "Exit" -WriteHost
+        if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -Completed -ParentId 1 }
+        $Message = "Done creating Excel report"
+        Write-ScreenInfo -Message $Message -Indent 1
+        Write-CMLogEntry -Value $Message -Severity 1 -Component "Exit"
     }
 
     # Stop clock for runtime
     $StopTime = (Get-Date) - $StartTime
 
+    $EndSummary = @(
+        ("---------------------------------------------------------------------------"),
+        ("Folders in {0}: {1}" -f $SourcesLocation, $AllFolders.count),
+        ("Folders where access denied: {0}" -f $Result.Where( { $_.UsedBy -like "Access denied*" } ).count),
+        ("Folders unused: {0}" -f $NotUsedFolders.count),
+        ("Potential disk space savings in `"{0}`": {1} MB" -f $SourcesLocation, $SummaryNotUsedFoldersMB),
+        ("Content objects processed: {0}" -f ($Commands -replace "Get-CM" -join ", ")),
+        ("Content objects: {0}" -f $AllContentObjects.count),
+        ("Runtime: {0}" -f $StopTime.ToString()),
+        ("---------------------------------------------------------------------------"),
+        ("Finished")
+    )
+
+    Write-ScreenInfo -Message $EndSummary
+
     # Write summary to log
-    Write-CMLogEntry -Value ("Content objects: {0}" -f $AllContentObjects.count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders at {0}: {1}" -f $SourcesLocation, $AllFolders.count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders where access denied: {0}" -f $Result.Where( { $_.UsedBy -like "Access denied*" } ).count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Folders unused: {0}" -f $NotUsedFolders.count) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Disk space in `"{0}`" not used by ConfigMgr content objects ({1}): {2} MB" -f $SourcesLocation, ($Commands -replace "Get-CM" -join ", "), $SummaryNotUsedFoldersMB) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value ("Runtime: {0}" -f $StopTime.ToString()) -Severity 1 -Component "Exit" -WriteHost
-    Write-CMLogEntry -Value "Finished" -Severity 1 -Component "Exit"
+    ForEach ($item in $EndSummary) {
+        Write-CMLogEntry -Value $item -Severity 1 -Component "Exit"
+    }
 
     return $Result
 }
