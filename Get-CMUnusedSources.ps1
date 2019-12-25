@@ -4,7 +4,7 @@
 .AUTHOR Adam Cook (Twitter: @codaamok - website: cookadam.co.uk)
 .COMPANYNAME 
 .COPYRIGHT 
-.TAGS SCCM ConfigMgr ConfigurationManager
+.TAGS SCCM ConfigMgr ConfigurationManager MEMCM MECM
 .LICENSEURI https://github.com/codaamok/Get-CMUnusedSources/blob/master/LICENSE
 .PROJECTURI https://github.com/codaamok/Get-CMUnusedSources
 .ICONURI 
