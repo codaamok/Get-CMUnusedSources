@@ -639,14 +639,24 @@ Function Get-AllPaths {
         # $AllSharedFolders is null if couldn't connect to serverr to get all shared folders
         $AllSharedFolders = Get-AllSharedFolders -Server $FQDN
         If ($AllSharedFolders -is [Hashtable] -And ($AllSharedFolders.count -gt 0)) {
-            $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
-                $Cache.Add($_, $AllSharedFolders)
+            $NetBIOS,$FQDN,$IP | ForEach-Object {
+                if ([String]::IsNullOrEmpty($_) -eq $true) {
+                    continue
+                }
+                else {
+                    $Cache.Add($_, $AllSharedFolders)
+                }
             }
         }
         else {
             # Add null so on the next encounter of a server from a given UNC path, we don't wastefully try again
-            $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object {
-                $Cache.Add($_, $null)
+            $NetBIOS,$FQDN,$IP | ForEach-Object {
+                if ([String]::IsNullOrEmpty($_) -eq $true) {
+                    continue
+                }
+                else {
+                    $Cache.Add($_, $null)
+                }
             }
         }
     }
@@ -655,32 +665,37 @@ Function Get-AllPaths {
 
     [System.Collections.Generic.List[String]]$AllPathsArr = @()
 
-    $NetBIOS,$FQDN,$IP | Where-Object { [string]::IsNullOrEmpty($_) -eq $false } | ForEach-Object -Process {
-        $AltServer = $_
-        if ($null -ne $Cache.$AltServer) {
-            # Get the share's local path
-            $LocalPath = $Cache.$AltServer[$ShareName]
+    $NetBIOS,$FQDN,$IP | ForEach-Object -Process {
+        if ([String]::IsNullOrEmpty($_) -eq $true) {
+            continue
         }
         else {
-            $LocalPath = $null
+            $AltServer = $_
+            if ($null -ne $Cache.$AltServer) {
+                # Get the share's local path
+                $LocalPath = $Cache.$AltServer[$ShareName]
+            }
+            else {
+                $LocalPath = $null
+            }
+            # If \\server\f$ then $LocalPath is "F:"
+            if ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
+                if ($PathType -match "1|2") {
+                    # Add \\server\f$\path\to\shared\folder\on\disk
+                    $AllPathsArr.Add(("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$'))
+                    # Get other shared folders that point to the same path and add them to the AllPaths array
+                    $SharesWithSamePath = $Cache.$AltServer.GetEnumerator().Where( { $_.Value -eq $LocalPath } ) | Select-Object -ExpandProperty Key
+                    ForEach ($AltShareName in $SharesWithSamePath) {
+                        $AllPathsArr.Add("\\$($AltServer)\$($AltShareName)$($ShareRemainder)")
+                    }
+                }  
+            }
+            else {
+                Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`" from cache, either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatherContentObjects"
+            }
+            # Add the original path again but with the alternate server (FQDN / NetBIOS / IP)
+            $AllPathsArr.Add("\\$($AltServer)\$($ShareName)$($ShareRemainder)")
         }
-        # If \\server\f$ then $LocalPath is "F:"
-        if ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
-            if ($PathType -match "1|2") {
-                # Add \\server\f$\path\to\shared\folder\on\disk
-                $AllPathsArr.Add(("\\$($AltServer)\$($LocalPath)$($ShareRemainder)" -replace ':', '$'))
-                # Get other shared folders that point to the same path and add them to the AllPaths array
-                $SharesWithSamePath = $Cache.$AltServer.GetEnumerator().Where( { $_.Value -eq $LocalPath } ) | Select-Object -ExpandProperty Key
-                ForEach ($AltShareName in $SharesWithSamePath) {
-                    $AllPathsArr.Add("\\$($AltServer)\$($AltShareName)$($ShareRemainder)")
-                }
-            }  
-        }
-        else {
-            Write-CMLogEntry -Value ("Could not resolve share `"{0}`" on `"{1}`" from cache, either because it does not exist or could not query Win32_Share on server" -f $ShareName,$_) -Severity 2 -Component "GatherContentObjects"
-        }
-        # Add the original path again but with the alternate server (FQDN / NetBIOS / IP)
-        $AllPathsArr.Add("\\$($AltServer)\$($ShareName)$($ShareRemainder)")
     } -End {
         if ([string]::IsNullOrEmpty($LocalPath) -eq $false) {
             # Either of the below are important in case user is running local to site server and gave local path as $SourcesLocation
