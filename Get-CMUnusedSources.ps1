@@ -721,8 +721,8 @@ Function Get-AllSharedFolders {
 
     # Get-CimInstance uses WinRM if ComputerName is provided, which can throw access denied if console is elevated
     # I would rather the below be in place rather than unnecessarily requiring elevated console
-    if ([System.Net.Dns]::GetHostEntry($env:COMPUTERNAME).HostName -ne $FQDN) {
-        $GetCimInstanceSplat.Add("ComputerName", $FQDN)
+    if ([System.Net.Dns]::GetHostEntry($env:COMPUTERNAME).HostName -ne $Server) {
+        $GetCimInstanceSplat.Add("ComputerName", $Server)
     }
 
     try {
@@ -734,7 +734,7 @@ Function Get-AllSharedFolders {
         }
     }
     catch {
-        $Message = "Could not get shared folders from `"{0}`" ({1})" -f $GetCimInstanceErr.Message
+        $Message = "Could not query Win32_Share on `"{0}`" ({1})" -f $Server, $GetCimInstanceErr.Message
         Write-Warning $Message
         Write-CMLogEntry -Value $Message -Severity 2 -Component "GatherContentObjects"
         $AllShares = $null
