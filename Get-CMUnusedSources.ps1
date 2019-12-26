@@ -184,6 +184,16 @@ $PSDefaultParameterValues = @{
     "Add-ExcelTable:TableStyle"             = "Medium20"
     "Export-Excel:AutoSize"                 = $true
     "Export-Excel:AutoFilter"               = $true
+    "Export-Excel:ErrorACtion"              = "Stop"
+    "Add-Worksheet:ErrorACtion"             = "Stop"
+    "Set-ExcelRange:ErrorACtion"            = "Stop"
+    "Remove-Worksheet:ErrorACtion"          = "Stop"
+    "Close-ExcelPackage:ErrorACtion"        = "Stop"
+    "Export-Excel:ErrorVariable"            = "NewExcelReportErr"
+    "Add-Worksheet:ErrorVariable"           = "NewExcelReportErr"
+    "Set-ExcelRange:ErrorVariable"          = "NewExcelReportErr"
+    "Remove-Worksheet:ErrorVariable"        = "NewExcelReportErr"
+    "Close-ExcelPackage:ErrorVariable"      = "NewExcelReportErr"
 }
 #endregion
 
@@ -1195,28 +1205,36 @@ Function New-ExcelReport {
         [String]$File,
         [Hashtable]$Data
     )
-    $ExcelPackage = Export-Excel -Path $File -PassThru
-    ForEach ($item in $Data.GetEnumerator()) {
-        $Worksheet = Add-Worksheet -ExcelPackage $ExcelPackage -WorksheetName $item.Key
-        switch -Regex ($item.Key) {
-            "Summary" {
-                $ExcelPackage = Export-Excel -ExcelPackage $ExcelPackage -WorksheetName $Worksheet.Name -InputObject $item.Value -Activate -PassThru
-                [void]$ExcelPackage.Workbook.Worksheets[$Worksheet].InsertRow(1,1)
-                $LastRow = $ExcelPackage.Workbook.Worksheets[$Worksheet].Dimension.Rows
-                Set-ExcelRange -Range $ExcelPackage.Workbook.Worksheets[$Worksheet].Cells["A1"] -Value "Total:" -HorizontalAlignment "Right" -Bold
-                ForEach ($Letter in @("B","C","D")) {
-                    $Formula = "=SUM({0}3:{1}{2})" -f $Letter, $Letter, ($LastRow + 1)
-                    $Cell = "{0}1" -f $Letter
-                    Set-ExcelRange -Range $ExcelPackage.Workbook.Worksheets[$Worksheet].Cells[$Cell] -Formula $Formula
+    try {
+        $ExcelPackage = Export-Excel -Path $File -PassThru
+        ForEach ($item in $Data.GetEnumerator()) {
+            $Worksheet = Add-Worksheet -ExcelPackage $ExcelPackage -WorksheetName $item.Key
+            switch -Regex ($item.Key) {
+                "Summary" {
+                    $ExcelPackage = Export-Excel -ExcelPackage $ExcelPackage -WorksheetName $Worksheet.Name -InputObject $item.Value -Activate -PassThru
+                    [void]$ExcelPackage.Workbook.Worksheets[$Worksheet].InsertRow(1,1)
+                    $LastRow = $ExcelPackage.Workbook.Worksheets[$Worksheet].Dimension.Rows
+                    Set-ExcelRange -Range $ExcelPackage.Workbook.Worksheets[$Worksheet].Cells["A1"] -Value "Total:" -HorizontalAlignment "Right" -Bold
+                    ForEach ($Letter in @("B","C","D")) {
+                        $Formula = "=SUM({0}3:{1}{2})" -f $Letter, $Letter, ($LastRow + 1)
+                        $Cell = "{0}1" -f $Letter
+                        Set-ExcelRange -Range $ExcelPackage.Workbook.Worksheets[$Worksheet].Cells[$Cell] -Formula $Formula
+                    }
+                }
+                default {
+                    $ExcelPackage = Export-Excel -ExcelPackage $ExcelPackage -WorksheetName $Worksheet.Name -InputObject $item.Value -PassThru
                 }
             }
-            default {
-                $ExcelPackage = Export-Excel -ExcelPackage $ExcelPackage -WorksheetName $Worksheet.Name -InputObject $item.Value -PassThru
-            }
         }
+        Remove-Worksheet -Path $File -WorksheetName "Sheet1"
+        Close-ExcelPackage -ExcelPackage $ExcelPackage
     }
-    Close-ExcelPackage -ExcelPackage $ExcelPkg -Show
-    Remove-Worksheet -Path $ExcelFile -WorksheetName "Sheet1"
+    catch {
+        $Message = "Failed to create Excel report ({0})" -f $NewExcelReportErr.Exception.Message
+        Write-ScreenInfo -Message $Message -Type "Error" -Indent 1
+        Write-CMLogEntry -Value $Message -Severity 3 -Component "Exit"
+    }
+    
 }
 #endregion
 
@@ -1644,43 +1662,36 @@ $AllFolders | ForEach-Object -Begin {
         Write-ScreenInfo -Message $Message
         Write-CMLogEntry -Value $Message -Severity 1 -Component "Exit"
         if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -PercentComplete 100 -ParentId 1 }
-        try {
-            New-ExcelReport -File ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -ErrorAction "Stop" -ErrorVariable NewExcelReportErr -Data @{
-                "Result"                = $Result
-                "Summary"               = $SummaryNotUsedFolders
-                "Not used folders"      = $NotUsedFolders
-                "Invalid paths"         = if ($InvalidPaths.count -gt 0 -And $null -ne $InvalidPaths) {
-                    $InvalidPaths
-                } 
-                else {
-                    [PSCustomObject]@{
-                        ContentType     = $null
-                        UniqueID        = $null
-                        Name            = $null
-                        IsRetired       = $null
-                        SourcePath      = $null
-                        SourcePathFlag  = $null
-                    }
-                }
-                "Content objects"   = if ($AllContentObjects.count -gt 0 -And $null -ne $AllContentObjects) {
-                    $AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths
-                }
-                else {
-                    [PSCustomObject]@{
-                        ContentType     = $null
-                        UniqueID        = $null
-                        Name            = $null
-                        IsRetired       = $null
-                        SourcePath      = $null
-                        SourcePathFlag  = $null
-                    }
+        New-ExcelReport -File ("{0}_{1}.xlsx" -f $PSCommandPath, $JobId) -ErrorAction "Stop" -ErrorVariable NewExcelReportErr -Data @{
+            "Result"                = $Result
+            "Summary"               = $SummaryNotUsedFolders
+            "Not used folders"      = $NotUsedFolders
+            "Invalid paths"         = if ($InvalidPaths.count -gt 0 -And $null -ne $InvalidPaths) {
+                $InvalidPaths
+            } 
+            else {
+                [PSCustomObject]@{
+                    ContentType     = $null
+                    UniqueID        = $null
+                    Name            = $null
+                    IsRetired       = $null
+                    SourcePath      = $null
+                    SourcePathFlag  = $null
                 }
             }
-        }
-        catch {
-            $Message = "Failed to create Excel report: {0}" -f $NewExcelReportErr.Message
-            Write-ScreenInfo -Message $Message -Type "Error" -Indent 1
-            Write-CMLogEntry -Value $Message -Severity 3 -Component "Exit"
+            "Content objects"   = if ($AllContentObjects.count -gt 0 -And $null -ne $AllContentObjects) {
+                $AllContentObjects | Select-Object -Property * -ExcludeProperty AllPaths
+            }
+            else {
+                [PSCustomObject]@{
+                    ContentType     = $null
+                    UniqueID        = $null
+                    Name            = $null
+                    IsRetired       = $null
+                    SourcePath      = $null
+                    SourcePathFlag  = $null
+                }
+            }
         }
         if ($NoProgress.IsPresent -eq $false) { Write-Progress -Id 2 -Activity $Message -Completed -ParentId 1 }
         $Message = "Done creating Excel report"
