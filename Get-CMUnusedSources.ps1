@@ -1226,8 +1226,8 @@ Function New-ExcelReport {
                 }
             }
         }
-        Remove-Worksheet -Path $File -WorksheetName "Sheet1"
         Close-ExcelPackage -ExcelPackage $ExcelPackage
+        Remove-Worksheet -Path $File -WorksheetName "Sheet1"
     }
     catch {
         $Message = "Failed to create Excel report ({0})" -f $NewExcelReportErr.Exception.Message
