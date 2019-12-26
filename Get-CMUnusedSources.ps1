@@ -1,5 +1,5 @@
 <#PSScriptInfo
-.VERSION 1.0.6
+.VERSION 1.0.7
 .GUID 62980d1d-d263-4c01-b49c-e64502363127
 .AUTHOR Adam Cook (Twitter: @codaamok - website: cookadam.co.uk)
 .COMPANYNAME 
@@ -675,8 +675,8 @@ Function Get-AllSharedFolders {
 
     # Get-CimInstance uses WinRM if ComputerName is provided, which can throw access denied if console is elevated
     # I would rather the below be in place rather than unnecessarily requiring elevated console
-    if ([System.Net.Dns]::GetHostEntry($env:COMPUTERNAME).HostName -ne $FQDN) {
-        $GetCimInstanceSplat.Add("ComputerName", $FQDN)
+    if ([System.Net.Dns]::GetHostEntry($env:COMPUTERNAME).HostName -ne $Server) {
+        $GetCimInstanceSplat.Add("ComputerName", $Server)
     }
 
     try {
@@ -688,7 +688,7 @@ Function Get-AllSharedFolders {
         }
     }
     catch {
-        $Message = "Could not get shared folders from `"{0}`" ({1})" -f $GetCimInstanceErr.Message
+        $Message = "Could not query Win32_Share on `"{0}`" ({1})" -f $Server, $GetCimInstanceErr.Message
         Write-Warning $Message
         Write-CMLogEntry -Value $Message -Severity 2 -Component "GatherContentObjects"
         $AllShares = $null
