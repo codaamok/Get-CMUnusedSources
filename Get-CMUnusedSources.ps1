@@ -659,7 +659,7 @@ Function Get-AllPaths {
         $AltServer = $_
         if ($null -ne $Cache.$AltServer) {
             # Get the share's local path
-            $LocalPath = $Cache.$AltServer.GetEnumerator().Where( { $_.Key -eq $ShareName } ) | Select-Object -ExpandProperty Value
+            $LocalPath = $Cache.$AltServer[$ShareName]
         }
         else {
             $LocalPath = $null
