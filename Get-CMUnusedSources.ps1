@@ -584,7 +584,7 @@ Function Get-AllPaths {
             # Please share $Path with me if this is caught!
             # As a fail safe, abort
             $Message = "Unable to interpret path `"{0}`"" -f $Path
-            Write-Warning $Message
+            Write-ScreenInfo -Message $Message -Type "Warning" -Indent 1
             Write-CMLogEntry -Value $Message -Severity 2 -Component "GatherContentObjects"
             $AllPaths.Add($Path, $null)
             $result.Add($Cache)
@@ -745,7 +745,7 @@ Function Get-AllSharedFolders {
     }
     catch {
         $Message = "Could not query Win32_Share on `"{0}`" ({1})" -f $Server, $GetCimInstanceErr.Message
-        Write-Warning $Message
+        Write-ScreenInfo -Message $Message -Type "Warning" -Indent 1
         Write-CMLogEntry -Value $Message -Severity 2 -Component "GatherContentObjects"
         $AllShares = $null
     }
