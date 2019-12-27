@@ -108,6 +108,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -
 
 - Gather all content objects relevant to site code `XYZ`.
 - Gather all folders under `\\server\folder`.
+- Exclude gathering (and therefore later processing) folders under `\\server\folder\somechildfolder1` and `\\server\folder\somechildfolder2`.
 - A log file will be created in the same directory as the script and rolled over when it reaches 2MB, with no limit on number of rotated logs to keep.
 - When finished, the object returned by the script will be exported and also the Excel report too.
 - 2 threads will be used.
