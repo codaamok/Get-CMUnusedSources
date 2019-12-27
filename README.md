@@ -11,7 +11,7 @@
 7. [Runtime stats](#runtime-stats)
 8. [Process overview](#process-overview)
 9. [Validating the results](#validating-the-results)
-10. [The HTML report explained](#the-html-report-explained)
+10. [The Excel report explained](#the-excel-report-explained)
 11. [The log file explained](#the-log-file-explained)
 12. [Parameters](#parameters)
 13. [Author](#author)
@@ -66,7 +66,7 @@ Folder                                    UsedBy
 
 - ConfigMgr console installed
 - PowerShell 5.1 or newer
-- [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) module installed (only if you specify `-HtmlReport` switch). See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
+- [ImportExcel](https://github.com/dfinke/ImportExcel) module installed (only if you specify `-ExcelReport` switch). See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1.xlsx).
 
 ## Getting started
 
@@ -85,38 +85,38 @@ Running the script without anything other than the mandatory parameters will do 
 - Show overall progress using Write-Progress
 - No logging
 - No PowerShell object export
-- No HTML report
+- No Excel report
 - Number of threads will be number from environment variable `NUMBER_OF_PROCESSORS`
 
 ## What can it do
 
 - You can execute this script remotely from a site server. It makes zero changes to your ConfigMgr site. It's purely for reporting.
 - The returned object by the script is an array of PSObjects.
-- `-SourcesLocation` can be a UNC or local path and works around the 260 MAX_PATH limit.
+- `-SourcesLocation` can be a UNC or local path and works around the 260 MAX_PATH limit. Use `-ExcludeFolders` parameter which takes an array of absolute paths of folders you wish to exclude under `-SourcesLocation`.
 - `-Threads` to control how many threads are used for concurrent processing.
 - Optionally exports PowerShell objects to file of either all your ConfigMgr content objects or the result. You can later reimport these using `Import-Clixml`.
-- Optionally create a HTML report where you can then export to CSV/PDF/XSLX.
+- Optionally create an Excel report.
 - Optionally filter the ConfigMgr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Optionally create a log file.
-- Optionally produce a HTML report, and thanks to [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML), from there you can export to CSV/PDF/XSLX. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
+- Optionally produce an Excel report, with thanks to [ImportExcel](https://github.com/dfinke/ImportExcel). See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1.xlsx).
 
 ## Examples
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteServer "server.contoso.com" -Log -ExportReturnObject -HtmlReport -Threads 2
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -SiteServer "server.contoso.com" -Log -ExportReturnObject -ExcelReport -ExcludeFolders "\\server\folder\somechildfolder1", "\\server\folder\somechildfolder2" -Threads 2
 ```
 
 - Gather all content objects relevant to site code `XYZ`.
 - Gather all folders under `\\server\folder`.
 - A log file will be created in the same directory as the script and rolled over when it reaches 2MB, with no limit on number of rotated logs to keep.
-- When finished, the object returned by the script will be exported and also the HTML report too.
+- When finished, the object returned by the script will be exported and also the Excel report too.
 - 2 threads will be used.
 - Returns the result PowerShell object to variable `$result`.
 
 ---
 
 ```powershell
-PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -SiteServer "server.contoso.com" -Log -NoProgress -ExportReturnObject -ExportCMContentObjects -Packages -Applications -OSImages -OSUpgradeImages -HtmlReport
+PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -SiteServer "server.contoso.com" -Log -NoProgress -ExportReturnObject -ExportCMContentObjects -Packages -Applications -OSImages -OSUpgradeImages -ExcelReport
 ```
 
 - Gather all content objects relevant to site code `XYZ`.
@@ -126,7 +126,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -S
 - Exports the result PowerShell object to file saved in the same directory as the script.
 - Exports all searched ConfigMgr content objects to file saved in the same directory as the script.
 - Gathers only Packages, Applications, Operating System images and Operating System upgrade images content objects.
-- Produces a HTML report saved in the same directory as the script. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
+- Produces an Excel report saved in the same directory as the script. See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1.xlsx).
 - Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` because that's the default value of `-Threads`.
 - Returns the result PowerShell object to variable `$result`
 
@@ -182,23 +182,27 @@ The `UsedBy` property can have one or more of the following values:
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications
-Starting
-Gathering folders: \\fileserver\Applications$
-Number of gathered folders: 41
-Gathering content objects: Application
-Number of gathered content objects: 16
-Determining unused folders, using 4 threads
-Adding jobs to queue
-Waiting for jobs to complete
-Done determining unused folders
-Calculating used disk space by unused folders
-Done calculating used disk space by unused folders
-Content objects: 16
-Folders at \\fileserver\Applications$: 41
-Folders where access denied: 2
-Folders unused: 13
-Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 5.86 MB
-Runtime: 00:00:14.2988987
+[ 00:18:14 | 00:00:00 ] - Starting
+[ 00:18:14 | 00:00:00 ] - Gathering folders: \\fileserver\Applications$
+[ 00:18:14 | 00:00:00 ]   - Done, number of gathered folders: 216
+[ 00:18:14 | 00:00:00 ] - Gathering content objects: Application
+[ 00:18:19 | 00:00:05 ]   - Done, number of gathered content objects: 74
+[ 00:18:19 | 00:00:05 ] - Determining unused folders, using 4 threads
+[ 00:18:19 | 00:00:05 ]   - Adding jobs to queue
+[ 00:18:23 | 00:00:09 ]       - Done, waiting for jobs to complete
+[ 00:18:31 | 00:00:17 ]   - Done determining unused folders
+[ 00:18:32 | 00:00:17 ] - Calculating used disk space by unused folders
+[ 00:18:32 | 00:00:17 ]   - Done calculating used disk space by unused folders
+[ 00:18:32 | 00:00:17 ] - ---------------------------------------------------------------------------
+[ 00:18:32 | 00:00:17 ] - Folders in \\fileserver\Applications$: 216
+[ 00:18:32 | 00:00:17 ] - Folders where access denied: 2
+[ 00:18:32 | 00:00:17 ] - Folders unused: 64
+[ 00:18:32 | 00:00:17 ] - Potential disk space savings in "\\fileserver\Applications$": 1661.43 MB
+[ 00:18:32 | 00:00:17 ] - Content objects processed: Application
+[ 00:18:32 | 00:00:17 ] - Content objects: 74
+[ 00:18:32 | 00:00:17 ] - Runtime: 00:00:17.7590537
+[ 00:18:32 | 00:00:17 ] - ---------------------------------------------------------------------------
+[ 00:18:32 | 00:00:17 ] - Finished
 
 PS C:\> $result | Select -First 10
 
@@ -218,24 +222,33 @@ Folder                                    UsedBy
 
 ## Validating the results
 
-You could verify if a folder structure is used or not by checking out the results of the script. The HTML report has a tab "All content objects" where you can verify if part or all of the path you're curious about is used.
+You could verify if a folder structure is used or not by checking out the results of the script. The Excel report has a tab "Content objects" where you can verify if part or all of the path you're curious about is used.
 
 You can easily achieve this verification with PowerShell:
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications
-Starting
-Gathering folders: \\fileserver\Applications$
-Number of folders: 40
-Gathering content objects: Application
-Number of content objects: 16
-Determining unused folders, using 2 threads
-Content objects: 16
-Folders at \\fileserver\Applications$: 40
-Folders where access denied: 1
-Folders unused: 11
-Disk space in "\\fileserver\Applications$" not used by ConfigMgr content objects (Application): 4.2 MB
-Runtime: 00:00:25.2392081
+[ 00:18:14 | 00:00:00 ] - Starting
+[ 00:18:14 | 00:00:00 ] - Gathering folders: \\fileserver\Applications$
+[ 00:18:14 | 00:00:00 ]   - Done, number of gathered folders: 216
+[ 00:18:14 | 00:00:00 ] - Gathering content objects: Application
+[ 00:18:19 | 00:00:05 ]   - Done, number of gathered content objects: 74
+[ 00:18:19 | 00:00:05 ] - Determining unused folders, using 4 threads
+[ 00:18:19 | 00:00:05 ]   - Adding jobs to queue
+[ 00:18:23 | 00:00:09 ]       - Done, waiting for jobs to complete
+[ 00:18:31 | 00:00:17 ]   - Done determining unused folders
+[ 00:18:32 | 00:00:17 ] - Calculating used disk space by unused folders
+[ 00:18:32 | 00:00:17 ]   - Done calculating used disk space by unused folders
+[ 00:18:32 | 00:00:17 ] - ---------------------------------------------------------------------------
+[ 00:18:32 | 00:00:17 ] - Folders in \\fileserver\Applications$: 216
+[ 00:18:32 | 00:00:17 ] - Folders where access denied: 2
+[ 00:18:32 | 00:00:17 ] - Folders unused: 64
+[ 00:18:32 | 00:00:17 ] - Potential disk space savings in "\\fileserver\Applications$": 1661.43 MB
+[ 00:18:32 | 00:00:17 ] - Content objects processed: Application
+[ 00:18:32 | 00:00:17 ] - Content objects: 74
+[ 00:18:32 | 00:00:17 ] - Runtime: 00:00:17.7590537
+[ 00:18:32 | 00:00:17 ] - ---------------------------------------------------------------------------
+[ 00:18:32 | 00:00:17 ] - Finished
 
 PS C:\> $result | Where-Object { $_.Folder -like "\\fileserver\Applications$*" }
 
@@ -259,6 +272,7 @@ For all the content objects `Get-CMContent` gathers, the following properties ar
 - `SourcePath`
 - `SourcePathFlag`
 - `AllPaths`
+- `SizeMB`
 
 The `SourcePathFlag` property is an enum which can have the following fours values:
 
@@ -271,6 +285,7 @@ Below is an example of how to generate the result into XML and import it in to a
 
 ```powershell
 PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Applications$" -SiteServer "server.contoso.com" -Applications -ExportCMContentObjects
+...
 PS C:\> $cmcontentobjs = Import-Clixml -Path ".\Get-CMUnusedSources.ps1_2019-07-07_16-48-52_cmobjects.xml"
 PS C:\> $cmcontentobjs | Select -First 2
 
@@ -283,6 +298,7 @@ AllPaths       : {\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Goo
                  \\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86,
                  \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86,
                  \\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86...}
+SizeMB         : 56.48
 
 
 ContentType    : Application
@@ -294,6 +310,7 @@ AllPaths       : {\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Googl
                  \\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
                  \\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
                  \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64...}
+SizeMB         : 57.36
 ```
 
 The `AllPaths` property is a hashtable.
@@ -329,17 +346,17 @@ F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
 \\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64
 ```
 
-## The HTML report explained
+## The Excel report explained
 
-I honestly love that [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) exists. See an example of the HTML report [here](https://www.cookadam.co.uk/Get-CMUnusedSources_ExampleHTMLReport.html).
+See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1.xlsx).
 
-You'll see five tabs. In each of the tabs you'll be able to export that view to Excel, CSV or PDF and filter the results within the browser using the search box at the top right - the criteria applies to all columns.
+You'll see five tabs: `Result`, `Summary`, `Not used folders`, `Content objects` and `Invalid paths`.
 
-### All folders
+### Result
 
 All of the folders under `-SourcesLocation` and their UsedBy status (same as the PSObject returned by the script).
 
-### Summary of not used folders
+### Summary
 
 A list of folders that were determined not used under the given path by the searched content objects. It does not include child folders, only "unique root folders", so this produces an accurate measurement of capacity used.
 
@@ -351,15 +368,25 @@ This ensures the "Totals" column produces an accurate measure of total capacity,
 
 All folders that were determined not used under the given path by the searched content objects.
 
-### Content objects with invalid path
+### Invalid paths
 
-All content objects that have a source path which are not accessible from the computer that ran this script.
+Content objects that have a source path which are not accessible from the computer that ran this script.
 
 A common result you'll see here, if you run the script remote from a site server, is things like USMT packages that are traditionally stored as a Package with a local path rather than UNC path.
 
-### All content objects
+### Content objects
 
 All searched ConfigMgr content objects. For example, if you specified `-Drivers` and `-DriverPackages` then it would only show you Driver and DriverPackage content object types, because that's all that was gathered.
+
+For each content object, you'll see these properties:
+
+- `ContentType`
+- `UniqueID`
+- `Name`
+- `SourcePath`
+- `SourcePathFlag`
+- `AllPaths`
+- `SizeMB`
 
 ## The log file explained
 
@@ -369,11 +396,11 @@ The log will display everything you see printed to console as well as gathered c
 
 After gathering each content object, it will log all of those content objects and their properties like so: 
 
-> ContentType - UniqueId - Name - SourcePath - SourcePathFlag - AllPaths
+> ContentType - UniqueId - Name - SourcePath - SourcePathFlag - AllPaths - SizeMB
 
 Example: 
 
-> Application - DeploymentType_1cd4198d-bb1f-41a8-ad3e-a81f4d8f1d44 - PuTTY 0.71::PuTTY x64 - \\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64\\ - 0 - \\\\fileserver\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,F:\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications1992\\putty\\putty 0.71\\PuTTY x64
+> Application - DeploymentType_1cd4198d-bb1f-41a8-ad3e-a81f4d8f1d44 - PuTTY 0.71::PuTTY x64 - \\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64\\ - 0 - \\\\fileserver\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,F:\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications1992\\putty\\putty 0.71\\PuTTY x64 - 0.73
 
 The result of the script is also written to log like so:
 
@@ -399,7 +426,7 @@ Example:
 
 You may spot some highlighted yellow warnings or red errors so I'll explain some of them here.
 
-### Unable to interpret path "x"
+> Unable to interpret path "x"
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -407,7 +434,7 @@ One of your content objects in ConfigMgr has a funky source path that I couldn't
 
 This would only be problematic for the content object(s) that experience this.
 
-### Server "x" is unreachable
+> Server "x" is unreachable
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -415,7 +442,7 @@ The server "x" that hosts the shared folder is unreachable; it failed a ping tes
 
 This would only be problematic for the content object(s) that experience this.
 
-### Could not get shared folders from "x" (y)
+> Could not get shared folders from "x" (y)
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -423,7 +450,7 @@ Could not query the Win32_Shares WMI class on the server "x" that hosts the shar
 
 This would only be problematic for the content object(s) that have source path associated with this server and any of its shared folders.
 
-### Could not resolve share "x" on "y", either because it does not exist or could not query Win32_Share on server
+> Could not resolve share "x" on "y", either because it does not exist or could not query Win32_Share on server
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -431,7 +458,7 @@ Could not determine the local path of shared folder "x" because that information
 
 This would only be problematic for the content object(s) that experience this.
 
-### Couldn't determine path type for "x" so might have problems accessing folders that breach MAX_PATH limit, quitting...
+> Couldn't determine path type for "x" so might have problems accessing folders that breach MAX_PATH limit, quitting...
 
 Occurs during the gathering folders stage so we can prefix `-SourcesLocation` with `\\?\..` to workaround the 260 MAX_PATH limit.
 
@@ -439,7 +466,7 @@ This means that `-SourcesLocation` was in such bananas format that I could not d
 
 This is a terminating error. It's important for the script to be able to successfully gather all folders from `-SourcesLocation`.
 
-### Consider using -AltFolderSearch, quiting...
+> Consider using -AltFolderSearch, quiting...
 
 Occurs during the gathering folders stage.
 
@@ -447,7 +474,7 @@ Something went wrong trying to get all folders under `-SourcesLocation`.
 
 This is a terminating error. It's important for the script to be able to successfully gather all folders from `-SourcesLocation`.
 
-### Couldn't reset "x"
+> Couldn't reset "x"
 
 Occurs during the gathering folders stage so we can prefix `-SourcesLocation` with `\\?\..` to workaround the 260 MAX_PATH limit.
 
@@ -455,7 +482,7 @@ After the script has finished gathering folders it tries to remove the `\\?\..` 
 
 This should not impact the results.
 
-### Won't be able to determine unused folders with given local path while running remotely from site server, quitting
+> Won't be able to determine unused folders with given local path while running remotely from site server, quitting
 
 Occurs before gathering any content objects or folders.
 
@@ -463,15 +490,15 @@ You have given local path for `-SourcesLocation`. We need to ensure we don't pro
 
 This is a terminating error.
 
-### Unable to import PSWriteHtml module: "x"
+> Unable to import ImportExcel module: "x"
 
 Occurs before gathering any content objects or folders.
 
-You have specified the switch to produce HTML report but do not have the [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML) module installed.
+You have specified the switch to produce Excel report but do not have the [ImportExcel](https://github.com/dfinke/ImportExcel) module installed.
 
 This is a terminating error.
 
-### Failed to export PowerShell object: "x"
+> Failed to export PowerShell object: "x"
 
 Occurs after main execution and just before closing.
 
@@ -479,11 +506,11 @@ You have specified the switch to export either all ConfigMgr content objects or 
 
 The script will attempt to continue and close normally.
 
-### Failed to create HTML report: "x"
+> Failed to create Excel report: "x"
 
 Occurs after main execution and just before closing.
 
-You have specified the switch to produce a HTML report and there was a problem doing so.
+You have specified the switch to produce a Excel report and there was a problem doing so.
 
 The script will attempt to continue and close normally.
 
@@ -500,6 +527,10 @@ The site server of the given ConfigMgr site code. The server must be reachable o
 ### -SiteCode
 
 The site code of the ConfigMgr site you wish to query for content objects.
+
+### -ExcludeFolders
+
+An array of folders that you want to exclude the script from checking, which should be absolute paths under the path given for -SourcesLocation.
 
 ### -Packages
 
@@ -557,9 +588,9 @@ Specify this option if you wish to export the PowerShell result object to an XML
 
 Specify this option if you wish to export all ConfigMgr content objects to an XML file. The XML file be saved to the same directory as this script with a name of `<scriptname>_<datetime>_cmobjects.xml`. It can easily be reimported using `Import-Clixml` cmdlet.
 
-### -HtmlReport
+### -ExcelReport
 
-Specify this option to enable the generation for a HTML report of the result. Doing this will force you to have the PSWriteHtml module installed. For more information on [PSWriteHTML](https://github.com/EvotecIT/PSWriteHTML). The HTML file will be saved to the same directory as this script with a name of `<scriptname>_<datetime>.html`.
+Specify this option to enable the generation for an Excel report of the result. Doing this will force you to have the ImportExcel module installed. For more information on ImportExcel: https://github.com/dfinke/ImportExcel. The .xlsx file will be saved to the same directory as this script with a name of <scriptname>_<datetime>.xlsx.
 
 ### -Threads
 
@@ -583,6 +614,6 @@ Big thanks to folks in [Windows Admins slack](https://slofile.com/slack/winadmin
 
 - Cody Mathis ([@codymathis123](https://github.com/CodyMathis123))
 - Chris Kibble ([@ChrisKibble](https://github.com/ChrisKibble))
-- Chris Dent ([@idented-automation](https://github.com/indented-automation))
+- Chris Dent ([@indented-automation](https://github.com/indented-automation))
 - Kevin Crouch ([@PsychoData](https://github.com/PsychoData))
 - Patrick Seymour ([@pseymour](https://github.com/pseymour))
