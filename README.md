@@ -426,7 +426,7 @@ Example:
 
 You may spot some highlighted yellow warnings or red errors so I'll explain some of them here.
 
-### Unable to interpret path "x"
+> Unable to interpret path "x"
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -434,7 +434,7 @@ One of your content objects in ConfigMgr has a funky source path that I couldn't
 
 This would only be problematic for the content object(s) that experience this.
 
-### Server "x" is unreachable
+> Server "x" is unreachable
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -442,7 +442,7 @@ The server "x" that hosts the shared folder is unreachable; it failed a ping tes
 
 This would only be problematic for the content object(s) that experience this.
 
-### Could not get shared folders from "x" (y)
+> Could not get shared folders from "x" (y)
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -450,7 +450,7 @@ Could not query the Win32_Shares WMI class on the server "x" that hosts the shar
 
 This would only be problematic for the content object(s) that have source path associated with this server and any of its shared folders.
 
-### Could not resolve share "x" on "y", either because it does not exist or could not query Win32_Share on server
+> Could not resolve share "x" on "y", either because it does not exist or could not query Win32_Share on server
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
@@ -458,7 +458,7 @@ Could not determine the local path of shared folder "x" because that information
 
 This would only be problematic for the content object(s) that experience this.
 
-### Couldn't determine path type for "x" so might have problems accessing folders that breach MAX_PATH limit, quitting...
+> Couldn't determine path type for "x" so might have problems accessing folders that breach MAX_PATH limit, quitting...
 
 Occurs during the gathering folders stage so we can prefix `-SourcesLocation` with `\\?\..` to workaround the 260 MAX_PATH limit.
 
@@ -466,7 +466,7 @@ This means that `-SourcesLocation` was in such bananas format that I could not d
 
 This is a terminating error. It's important for the script to be able to successfully gather all folders from `-SourcesLocation`.
 
-### Consider using -AltFolderSearch, quiting...
+> Consider using -AltFolderSearch, quiting...
 
 Occurs during the gathering folders stage.
 
@@ -474,7 +474,7 @@ Something went wrong trying to get all folders under `-SourcesLocation`.
 
 This is a terminating error. It's important for the script to be able to successfully gather all folders from `-SourcesLocation`.
 
-### Couldn't reset "x"
+> Couldn't reset "x"
 
 Occurs during the gathering folders stage so we can prefix `-SourcesLocation` with `\\?\..` to workaround the 260 MAX_PATH limit.
 
@@ -482,7 +482,7 @@ After the script has finished gathering folders it tries to remove the `\\?\..` 
 
 This should not impact the results.
 
-### Won't be able to determine unused folders with given local path while running remotely from site server, quitting
+> Won't be able to determine unused folders with given local path while running remotely from site server, quitting
 
 Occurs before gathering any content objects or folders.
 
@@ -490,7 +490,7 @@ You have given local path for `-SourcesLocation`. We need to ensure we don't pro
 
 This is a terminating error.
 
-### Unable to import ImportExcel module: "x"
+> Unable to import ImportExcel module: "x"
 
 Occurs before gathering any content objects or folders.
 
@@ -498,7 +498,7 @@ You have specified the switch to produce Excel report but do not have the [Impor
 
 This is a terminating error.
 
-### Failed to export PowerShell object: "x"
+> Failed to export PowerShell object: "x"
 
 Occurs after main execution and just before closing.
 
@@ -506,7 +506,7 @@ You have specified the switch to export either all ConfigMgr content objects or 
 
 The script will attempt to continue and close normally.
 
-### Failed to create Excel report: "x"
+> Failed to create Excel report: "x"
 
 Occurs after main execution and just before closing.
 
