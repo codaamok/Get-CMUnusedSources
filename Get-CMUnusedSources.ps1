@@ -417,7 +417,7 @@ Function Get-CMContent {
                                 $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer
 
                                 # Create content object PSObject with needed properties and add to array
-                                $obj = [PSCustomObject]@{
+                                $obj = [ordered]@{
                                     ContentType     = "Application"
                                     UniqueID        = $DeploymentType | Select-Object -ExpandProperty LogicalName
                                     Name            = "{0}::{1}" -f $item.LocalizedDisplayName,$DeploymentType.Title.InnerText
@@ -426,7 +426,13 @@ Function Get-CMContent {
                                     SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
                                     AllPaths        = $GetAllPathsResult[1]
                                 }
-                                $obj
+                                if ($obj["SourcePathFlag"] -eq 0) {
+                                    $obj.Add("SizeMB", (Measure-ChildItem -Path $obj["SourcePath"] -Unit MB -Digits 2 | Select-Object -ExpandProperty Size))
+                                }
+                                else {
+                                    $obj.Add("SizeMB", $null)
+                                }
+                                [PSCustomObject]$obj
                             }
 
                             # Maintaining cache of shared folders for servers encountered so far
@@ -441,7 +447,7 @@ Function Get-CMContent {
                         $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer 
                         
                         # Create content object PSObject with needed properties and add to array
-                        $obj = [PSCustomObject]@{
+                        $obj = [ordered]@{
                             ContentType     = "Driver"
                             UniqueID        = $item.CI_ID
                             Name            = $item.LocalizedDisplayName
@@ -450,7 +456,13 @@ Function Get-CMContent {
                             SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
                             AllPaths        = $GetAllPathsResult[1]
                         }
-                        $obj
+                        if ($obj["SourcePathFlag"] -eq 0) {
+                            $obj.Add("SizeMB", (Measure-ChildItem -Path $obj["SourcePath"] -Unit MB -Digits 2 | Select-Object -ExpandProperty Size))
+                        }
+                        else {
+                            $obj.Add("SizeMB", $null)
+                        }
+                        [PSCustomObject]$obj
 
                         # Maintaining cache of shared folders for servers encountered so far
                         $ShareCache = $GetAllPathsResult[0]
@@ -471,7 +483,7 @@ Function Get-CMContent {
                         $GetAllPathsResult = Get-AllPaths -Path $SourcePath -Cache $ShareCache -SiteServer $SiteServer
 
                         # Create content object PSObject with needed properties and add to array
-                        $obj = [PSCustomObject]@{
+                        $obj = [ordered]@{
                             ContentType     = $ContentType
                             UniqueID        = $item.PackageId
                             Name            = $item.Name
@@ -480,7 +492,13 @@ Function Get-CMContent {
                             SourcePathFlag  = [int](Test-FileSystemAccess -Path $SourcePath -Rights Read)
                             AllPaths        = $GetAllPathsResult[1]
                         }
-                        $obj
+                        if ($obj["SourcePathFlag"] -eq 0) {
+                            $obj.Add("SizeMB", (Measure-ChildItem -Path $obj["SourcePath"] -Unit MB -Digits 2 | Select-Object -ExpandProperty Size))
+                        }
+                        else {
+                            $obj.Add("SizeMB", $null)
+                        }
+                        [PSCustomObject]$obj
 
                         # Maintaining cache of shared folders for servers encountered so far
                         $ShareCache = $GetAllPathsResult[0]
@@ -1692,6 +1710,7 @@ $AllFolders | ForEach-Object -Begin {
                     IsRetired       = $null
                     SourcePath      = $null
                     SourcePathFlag  = $null
+                    SizeMB          = $null
                 }
             }
             "Content objects"   = if ($AllContentObjects.count -gt 0 -And $null -ne $AllContentObjects) {
@@ -1705,6 +1724,7 @@ $AllFolders | ForEach-Object -Begin {
                     IsRetired       = $null
                     SourcePath      = $null
                     SourcePathFlag  = $null
+                    SizeMB          = $null
                 }
             }
         }
