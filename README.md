@@ -66,7 +66,7 @@ Folder                                    UsedBy
 
 - ConfigMgr console installed
 - PowerShell 5.1 or newer
-- [ImportExcel](https://github.com/dfinke/ImportExcel) module installed (only if you specify `-ExcelReport` switch). See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
+- [ImportExcel](https://github.com/dfinke/ImportExcel) module installed (only if you specify `-ExcelReport` switch). See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1.xlsx).
 
 ## Getting started
 
@@ -98,7 +98,7 @@ Running the script without anything other than the mandatory parameters will do 
 - Optionally create an Excel report.
 - Optionally filter the ConfigMgr content object search by specifying one or more of the following:  `-Applications`,  `-Packages`,  `-Drivers`,  `-DriverPackages`,  `-OSImages`,  `-OSUpgradeImages`,  `-BootImages`,  `-DeploymentPackages`.
 - Optionally create a log file.
-- Optionally produce an Excel report, with thanks to [ImportExcel](https://github.com/dfinke/ImportExcel). See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
+- Optionally produce an Excel report, with thanks to [ImportExcel](https://github.com/dfinke/ImportExcel). See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1.xlsx).
 
 ## Examples
 
@@ -126,7 +126,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -S
 - Exports the result PowerShell object to file saved in the same directory as the script.
 - Exports all searched ConfigMgr content objects to file saved in the same directory as the script.
 - Gathers only Packages, Applications, Operating System images and Operating System upgrade images content objects.
-- Produces an Excel report saved in the same directory as the script. See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
+- Produces an Excel report saved in the same directory as the script. See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1.xlsx).
 - Will use as many threads as the value in environment variable `NUMBER_OF_PROCESSORS` because that's the default value of `-Threads`.
 - Returns the result PowerShell object to variable `$result`
 
@@ -272,6 +272,7 @@ For all the content objects `Get-CMContent` gathers, the following properties ar
 - `SourcePath`
 - `SourcePathFlag`
 - `AllPaths`
+- `SizeMB`
 
 The `SourcePathFlag` property is an enum which can have the following fours values:
 
@@ -297,6 +298,7 @@ AllPaths       : {\\192.168.175.11\Applications$\chrome\chrome 73.0.3683.103\Goo
                  \\fileserver\Applications1992\chrome\chrome 73.0.3683.103\Google Chrome x86,
                  \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x86,
                  \\fileserver.contoso.com\F$\Applications\chrome\chrome 73.0.3683.103\Google Chrome x86...}
+SizeMB         : 56.48
 
 
 ContentType    : Application
@@ -308,6 +310,7 @@ AllPaths       : {\\fileserver\F$\Applications\chrome\chrome 73.0.3683.103\Googl
                  \\192.168.175.11\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
                  \\fileserver.contoso.com\Sources$\chrome\chrome 73.0.3683.103\Google Chrome x64,
                  \\fileserver.contoso.com\Applications$\chrome\chrome 73.0.3683.103\Google Chrome x64...}
+SizeMB         : 57.36
 ```
 
 The `AllPaths` property is a hashtable.
@@ -345,7 +348,7 @@ F:\Applications\chrome\chrome 73.0.3683.103\Google Chrome x64
 
 ## The Excel report explained
 
-See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1_2019-12-21_10-30-03.xlsx).
+See an example of the Excel report [here](https://www.cookadam.co.uk/Get-CMUnusedSources.ps1.xlsx).
 
 You'll see five tabs: `Result`, `Summary`, `Not used folders`, `Content objects` and `Invalid paths`.
 
@@ -375,6 +378,16 @@ A common result you'll see here, if you run the script remote from a site server
 
 All searched ConfigMgr content objects. For example, if you specified `-Drivers` and `-DriverPackages` then it would only show you Driver and DriverPackage content object types, because that's all that was gathered.
 
+For each content object, you'll see these properties:
+
+- `ContentType`
+- `UniqueID`
+- `Name`
+- `SourcePath`
+- `SourcePathFlag`
+- `AllPaths`
+- `SizeMB`
+
 ## The log file explained
 
 You'll need CMTrace to read it.
@@ -383,11 +396,11 @@ The log will display everything you see printed to console as well as gathered c
 
 After gathering each content object, it will log all of those content objects and their properties like so: 
 
-> ContentType - UniqueId - Name - SourcePath - SourcePathFlag - AllPaths
+> ContentType - UniqueId - Name - SourcePath - SourcePathFlag - AllPaths - SizeMB
 
 Example: 
 
-> Application - DeploymentType_1cd4198d-bb1f-41a8-ad3e-a81f4d8f1d44 - PuTTY 0.71::PuTTY x64 - \\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64\\ - 0 - \\\\fileserver\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,F:\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications1992\\putty\\putty 0.71\\PuTTY x64
+> Application - DeploymentType_1cd4198d-bb1f-41a8-ad3e-a81f4d8f1d44 - PuTTY 0.71::PuTTY x64 - \\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64\\ - 0 - \\\\fileserver\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,F:\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\Sources$\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications$\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\Applications1992\\putty\\putty 0.71\\PuTTY x64,\\\\192.168.175.11\\F$\\Applications\\putty\\putty 0.71\\PuTTY x64,\\\\fileserver.contoso.com\\Applications1992\\putty\\putty 0.71\\PuTTY x64 - 0.73
 
 The result of the script is also written to log like so:
 

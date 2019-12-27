@@ -438,7 +438,7 @@ Function Get-CMContent {
                             # Maintaining cache of shared folders for servers encountered so far
                             $ShareCache = $GetAllPathsResult[0]
 
-                            Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4} - {5}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.SourcePathFlag,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
+                            Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4} - {5} - {6}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.SourcePathFlag,[String]::Join(", ", @($obj.AllPaths.Keys)),$obj.SizeMB) -Severity 1 -Component "GatherContentObjects"
                         }
                     }
                     "^Get-CMDriver\s.+" { 
@@ -467,7 +467,7 @@ Function Get-CMContent {
                         # Maintaining cache of shared folders for servers encountered so far
                         $ShareCache = $GetAllPathsResult[0]
 
-                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4} - {5}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.SourcePathFlag,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
+                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4} - {5} - {6}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.SourcePathFlag,[String]::Join(", ", @($obj.AllPaths.Keys)),$obj.SizeMB) -Severity 1 -Component "GatherContentObjects"
                     }
                     default {
                         # OS images and boot iamges are absolute paths to files
@@ -503,7 +503,7 @@ Function Get-CMContent {
                         # Maintaining cache of shared folders for servers encountered so far
                         $ShareCache = $GetAllPathsResult[0]
 
-                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4} - {5}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.SourcePathFlag,($obj.AllPaths.Keys -join ",")) -Severity 1 -Component "GatherContentObjects"
+                        Write-CMLogEntry -Value ("{0} - {1} - {2} - {3} - {4} - {5} - {6}" -f $obj.ContentType,$obj.UniqueID,$obj.Name,$obj.SourcePath,$obj.SourcePathFlag,[String]::Join(", ", @($obj.AllPaths.Keys)),$obj.SizeMB) -Severity 1 -Component "GatherContentObjects"
                     }   
                 }
             }
