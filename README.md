@@ -70,7 +70,7 @@ Folder                                    UsedBy
 
 ## Getting started
 
-1. Download `Get-CMUnusedSources.ps1`s
+1. Download `Get-CMUnusedSources.ps1`
 2. Check out the examples below and read through the parameters available. If you're eager, then calling the script as is and only providing values for the mandatory parameters will get you going under the default conditions (_see below_).
 
 ## Default conditions
@@ -123,7 +123,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "F:\some\folder" -S
 - Gather all content objects relevant to site code `XYZ`.
 - Gather all folders under `F:\some\folder`.
 - A log file will be created in the same directory as the script and rolled over when it reaches 2MB, with no limit on number of rotated logs to keep.
-- Surpress PowerShell progress (`Write-Progress`).
+- Suppress PowerShell progress (`Write-Progress`).
 - Exports the result PowerShell object to file saved in the same directory as the script.
 - Exports all searched ConfigMgr content objects to file saved in the same directory as the script.
 - Gathers only Packages, Applications, Operating System images and Operating System upgrade images content objects.
@@ -166,7 +166,7 @@ F:\Applications\7zip\x64
 
 In the above example, the script discovered the local path for the `Applications$` share was `F:\Applications` and that `SomeOtherSharedFolder$` was another share that also resolves to the same local path. This path permutation enables the script to identify used folders that could use different paths but resolve to the same location.
 
-Once all the folders and ConfigrMgr content objects have been gathered, it begins iterating through through each folder, and for each folder it iterates over all content objects to determine if said folder is used by any content objects. 
+Once all the folders and ConfigMgr content objects have been gathered, it begins iterating through through each folder, and for each folder it iterates over all content objects to determine if said folder is used by any content objects. 
 
 This process builds an array of PSObjects with the two properties `Folder` and `UsedBy`.
 
@@ -263,7 +263,7 @@ Folder                                UsedBy
 ...
 ```
 
-The `-ExportCMContentObjects` is also a useful switch for this task because it produces an XML export of the result produced by `Get-CMContent`. `Get-CMContent` is a function within the script that retrieves content objects using the Configuration Manager PowerShell cmdlets and selecting only key propertiest.
+The `-ExportCMContentObjects` is also a useful switch for this task because it produces an XML export of the result produced by `Get-CMContent`. `Get-CMContent` is a function within the script that retrieves content objects using the Configuration Manager PowerShell cmdlets and selecting only key properties.
 
 For all the content objects `Get-CMContent` gathers, the following properties are selected:
 
@@ -443,11 +443,11 @@ The server "x" that hosts the shared folder is unreachable; it failed a ping tes
 
 This would only be problematic for the content object(s) that experience this.
 
-> Could not get shared folders from "x" (y)
+> Could not query Win32_Share on "x" (y)
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
-Could not query the Win32_Shares WMI class on the server "x" that hosts the shared folder. "y" is the exception message.
+Could not query the Win32_Share WMI class on the server "x" that hosts the shared folder. "y" is the exception message.
 
 This would only be problematic for the content object(s) that have source path associated with this server and any of its shared folders.
 
@@ -455,7 +455,7 @@ This would only be problematic for the content object(s) that have source path a
 
 Occurs during the gathering content objects stage and trying to build the AllPaths property.
 
-Could not determine the local path of shared folder "x" because that information could not be retrieved from server "y", either because the share does not exist or could not query the Win32_Shares class on "y".
+Could not determine the local path of shared folder "x" because that information could not be retrieved from server "y", either because the share does not exist or could not query the Win32_Share class on "y".
 
 This would only be problematic for the content object(s) that experience this.
 
