@@ -145,7 +145,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\server\folder" -
 
 ## Process overview
 
-The process begins by gathering all folders under `-SourcesLocation`. Once all folder are gathered, all (or selective) ConfigMgr content objects are gathered within a hierarchy, filtered by site code, using the ConfigMgr cmdlets. It also recursively gathers all folders under `-SourcesLocation`.
+The process begins by gathering all folders under `-SourcesLocation`. Once all folder are gathered, all (or selective) ConfigMgr content objects are gathered within a hierarchy, filtered by site code, using the ConfigMgr cmdlets.
 
 > **Note:** It's OK if you see "Access denied" exceptions printed to console, the script will handle these and report accordingly.
 
