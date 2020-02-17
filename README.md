@@ -22,6 +22,8 @@
 
 A PowerShell script that will tell you what folders are not used by System Center Configuration Manager in a given path. This is useful if your storage is getting full and you need a way to identify what on disk is good to go.
 
+Watch [this video](https://www.youtube.com/watch?v=YGwQIUhYJsY) of me demoing it at WMUG.
+
 The script returns an array of PSObjects with two properties: `Folder` and `UsedBy`.
 
 The `UsedBy` property can have one or more of the following values:
