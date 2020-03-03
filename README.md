@@ -253,7 +253,7 @@ PS C:\> $result = .\Get-CMUnusedSources.ps1 -SourcesLocation "\\fileserver\Appli
 [ 00:18:32 | 00:00:17 ] - ---------------------------------------------------------------------------
 [ 00:18:32 | 00:00:17 ] - Finished
 
-PS C:\> $result | Where-Object { $_.Folder -like "\\fileserver\Applications$*" }
+PS C:\> $result | Where-Object { $_.Folder -like "\\fileserver\Applications*" }
 
 Folder                                UsedBy
 ------                                ------
